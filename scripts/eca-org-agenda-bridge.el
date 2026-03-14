@@ -517,11 +517,16 @@ first child heading if one exists."
                          (point)))
            (body-end (save-excursion
                        (goto-char body-start)
-                       (if (and (outline-next-heading)
-                                (< (point) subtree-end)
-                                (> (org-outline-level) level))
-                           (line-beginning-position)
-                         subtree-end))))
+                       (cond
+                        ((and (looking-at org-heading-regexp)
+                              (> (org-outline-level) level))
+                         (point))
+                        ((and (outline-next-heading)
+                              (< (point) subtree-end)
+                              (> (org-outline-level) level))
+                         (line-beginning-position))
+                        (t
+                         subtree-end)))))
       (cons body-start body-end))))
 
 (defun eca-org-agenda--current-body-string ()
