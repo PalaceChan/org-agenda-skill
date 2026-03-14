@@ -268,5 +268,87 @@ file paths. When ADD-ID is non-nil, allow bridge-created IDs."
       (should (string-match-p "^\\* DONE Identified Task$"
                               (eca-org-agenda-test--read-workspace-file "todo.org"))))))
 
+(ert-deftest eca-org-agenda-bridge-test-refile-id-to-file-moves-subtree ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* TODO Move Me\n:PROPERTIES:\n:ID: refile-source-11111111-2222-3333-4444-555555555555\n:END:\nSource body\n** Child\nChild line\n\n* Keep Me\n")
+                ("target.org" . "#+title: target\n\n")))
+    (let* ((id "refile-source-11111111-2222-3333-4444-555555555555")
+           (result (eca-org-agenda-refile-id-to-file id "target.org"))
+           (relocated (eca-org-agenda-find-id id))
+           (source-text (eca-org-agenda-test--read-workspace-file "todo.org"))
+           (target-text (eca-org-agenda-test--read-workspace-file "target.org")))
+      (should (plist-get result :refiled))
+      (should (equal (plist-get relocated :file)
+                     (eca-org-agenda-test--workspace-file "target.org")))
+      (should (equal (plist-get relocated :path) '("Move Me")))
+      (should-not (string-match-p "^\\* TODO Move Me$" source-text))
+      (should (string-match-p "^\\* Keep Me$" source-text))
+      (should (string-match-p "^\\* TODO Move Me$" target-text))
+      (should (string-match-p "^\\*\\* Child$" target-text)))))
+
+(ert-deftest eca-org-agenda-bridge-test-refile-id-to-id-moves-subtree-under-target ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* TODO Source\n:PROPERTIES:\n:ID: source-11111111-2222-3333-4444-555555555555\n:END:\nSource body\n\n* Target\n:PROPERTIES:\n:ID: target-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\n:END:\nTarget body\n\n* After\n")))
+    (let* ((source-id "source-11111111-2222-3333-4444-555555555555")
+           (target-id "target-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+           (result (eca-org-agenda-refile-id-to-id source-id target-id))
+           (relocated (eca-org-agenda-find-id source-id))
+           (text (eca-org-agenda-test--read-workspace-file "todo.org")))
+      (should (plist-get result :refiled))
+      (should (equal (plist-get relocated :path) '("Target" "Source")))
+      (should-not (string-match-p "^\\* TODO Source$" text))
+      (should (= 1 (eca-org-agenda-test--count-matches "^\\*\\* TODO Source$" text)))
+      (should (string-match-p "^\\* After$" text)))))
+
+(ert-deftest eca-org-agenda-bridge-test-refile-id-to-id-errors-on-own-subtree ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* TODO Parent\n:PROPERTIES:\n:ID: parent-11111111-2222-3333-4444-555555555555\n:END:\n** Child\n:PROPERTIES:\n:ID: child-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee\n:END:\n")))
+    (let ((before (eca-org-agenda-test--read-workspace-file "todo.org")))
+      (should-error
+       (eca-org-agenda-refile-id-to-id
+        "parent-11111111-2222-3333-4444-555555555555"
+        "child-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+       :type 'user-error)
+      (should (equal before (eca-org-agenda-test--read-workspace-file "todo.org"))))))
+
+(ert-deftest eca-org-agenda-bridge-test-archive-id-moves-subtree-to-archive-file ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* TODO Archive Me\n:PROPERTIES:\n:ID: archive-11111111-2222-3333-4444-555555555555\n:END:\nArchived body\n\n* Keep Me\n")
+                ("archive.org" . "#+title: archive\n\n")))
+    (let* ((org-archive-location "archive.org::")
+           (id "archive-11111111-2222-3333-4444-555555555555")
+           (result (eca-org-agenda-archive-id id))
+           (source-text (eca-org-agenda-test--read-workspace-file "todo.org"))
+           (archive-text (eca-org-agenda-test--read-workspace-file "archive.org")))
+      (should (plist-get result :archived))
+      (should (equal (plist-get result :title) "Archive Me"))
+      (should-not (string-match-p "^\\* TODO Archive Me$" source-text))
+      (should (string-match-p "^\\* Keep Me$" source-text))
+      (should (string-match-p "Archive Me" archive-text))
+      (should (string-match-p id archive-text)))))
+
+(ert-deftest eca-org-agenda-bridge-test-summary-buckets-items-by-date ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* TODO Overdue\nSCHEDULED: <2026-04-08 Wed>\n\n* TODO Today\nDEADLINE: <2026-04-10 Fri>\n\n* TODO Upcoming\nSCHEDULED: <2026-04-12 Sun>\n\n* TODO Unscheduled\n")))
+    (let* ((summary (eca-org-agenda-summary 7 "2026-04-10" nil))
+           (counts (plist-get summary :counts)))
+      (should (equal (plist-get summary :reference-day) "2026-04-10"))
+      (should (= 1 (plist-get counts :overdue)))
+      (should (= 1 (plist-get counts :today)))
+      (should (= 1 (plist-get counts :upcoming)))
+      (should (= 1 (plist-get counts :unscheduled)))
+      (should (equal (mapcar (lambda (item) (plist-get item :title))
+                             (plist-get summary :overdue))
+                     '("Overdue")))
+      (should (equal (mapcar (lambda (item) (plist-get item :title))
+                             (plist-get summary :today))
+                     '("Today")))
+      (should (equal (mapcar (lambda (item) (plist-get item :title))
+                             (plist-get summary :upcoming))
+                     '("Upcoming")))
+      (should (equal (mapcar (lambda (item) (plist-get item :title))
+                             (plist-get summary :unscheduled))
+                     '("Unscheduled"))))))
+
 (provide 'eca-org-agenda-bridge-test)
 ;;; eca-org-agenda-bridge-test.el ends here
