@@ -155,6 +155,10 @@ file paths. When ADD-ID is non-nil, allow bridge-created IDs."
   (should (equal (eca-org-agenda--format-tags ":foo:bar:")
                  " :foo:bar:"))
   (should (equal (eca-org-agenda--format-tags "foo bar")
+                 " :foo:bar:"))
+  (should (equal (eca-org-agenda--format-tags ":foo::")
+                 " :foo:"))
+  (should (equal (eca-org-agenda--format-tags ":foo: bar:")
                  " :foo:bar:")))
 
 (ert-deftest eca-org-agenda-bridge-test-dedupe-items-preserves-first-seen-order ()

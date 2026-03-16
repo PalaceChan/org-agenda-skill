@@ -370,7 +370,7 @@ Allows BODY to contain literal \\n sequences."
     (replace-regexp-in-string "\\\\n" "\n" body t t)))
 
 (defun eca-org-agenda--format-tags (tags)
-  "Format TAGS for an Org heading, returning a string like \":a:b:\" or \"\".
+  "Format TAGS for an Org heading, returning a string like \" :a:b:\" or \"\".
 TAGS may be nil, a string, or a list of strings."
   (cond
    ((null tags) "")
@@ -379,10 +379,9 @@ TAGS may be nil, a string, or a list of strings."
       (cond
        ((string-empty-p t0) "")
        ;; Keep an already-formed :tag:tag: block.
-       ((string-match-p "\\`:[^ ]+:\\'" t0) (concat " " t0))
+       ((string-match-p "\\`:\\(?:[^[:space:]:]+:\\)+\\'" t0) (concat " " t0))
        (t
-        (let* ((parts (split-string t0 "[ ,]+" t))
-               (parts (cl-remove-if #'string-empty-p parts)))
+        (let ((parts (eca-org-agenda--normalize-tags-list t0)))
           (if parts (concat " :" (string-join parts ":") ":") ""))))))
    ((listp tags)
     (let ((parts (cl-remove-if (lambda (x) (or (null x) (string-empty-p (string-trim x))))
