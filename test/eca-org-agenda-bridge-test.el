@@ -214,6 +214,29 @@ file paths. When ADD-ID is non-nil, allow bridge-created IDs."
       (should (equal (plist-get result :body) "Line 1\nLine 2"))
       (should-not (string-match-p "Child" (plist-get result :body))))))
 
+(ert-deftest eca-org-agenda-bridge-test-entry-metadata-includes-body-subtree-and-child-size ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* Project\nLine 1\nLine 2\n** Child\nChild line\n")))
+    (let ((result (eca-org-agenda-find-heading-by-path "Project" "todo.org")))
+      (should (eq (plist-get result :has-children) t))
+      (should (= 1 (plist-get result :child-count)))
+      (should (= 2 (plist-get result :body-lines)))
+      (should (= 14 (plist-get result :body-chars)))
+      (should (= 5 (plist-get result :subtree-lines)))
+      (should (= 44 (plist-get result :subtree-chars))))))
+
+(ert-deftest eca-org-agenda-bridge-test-get-body-can-return-metadata-only ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* Project\nLine 1\nLine 2\n** Child\nChild line\n")))
+    (let ((result (eca-org-agenda-get-body-by-path
+                   "Project"
+                   :file "todo.org"
+                   :return-body nil)))
+      (should-not (plist-member result :body))
+      (should (eq (plist-get result :has-children) t))
+      (should (= 1 (plist-get result :child-count)))
+      (should (= 2 (plist-get result :body-lines))))))
+
 (ert-deftest eca-org-agenda-bridge-test-replace-body-by-path-preserves-structure ()
   (eca-org-agenda-test--with-temp-workspace
       (:files `(("todo.org" . ,(eca-org-agenda-test--fixture-contents "replace-body-before.org"))))
@@ -228,6 +251,73 @@ file paths. When ADD-ID is non-nil, allow bridge-created IDs."
     (eca-org-agenda-append-body-by-path "Empty Body" "First inserted line" :file "todo.org")
     (should (equal (eca-org-agenda-test--read-workspace-file "todo.org")
                    (eca-org-agenda-test--fixture-contents "append-body-after.org")))))
+
+(ert-deftest eca-org-agenda-bridge-test-body-mutations-can-omit-returned-body ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* Task\nOld\n")))
+    (let ((default-result (eca-org-agenda-replace-body-by-path
+                           "Task" "New" :file "todo.org")))
+      (should (plist-member default-result :body))
+      (should (equal (plist-get default-result :body) "New")))
+    (let ((metadata-result (eca-org-agenda-append-body-by-path
+                            "Task" "More" :file "todo.org" :return-body nil)))
+      (should-not (plist-member metadata-result :body))
+      (should (= 2 (plist-get metadata-result :body-lines))))
+    (let ((quiet-result (eca-org-agenda-replace-body-by-path
+                         "Task" "Quiet" :file "todo.org" :quiet t)))
+      (should-not (plist-member quiet-result :body))
+      (should (= 1 (plist-get quiet-result :body-lines))))
+    (should (equal (plist-get (eca-org-agenda-get-body-by-path "Task" :file "todo.org")
+                              :body)
+                   "Quiet"))))
+
+(ert-deftest eca-org-agenda-bridge-test-body-from-file-helpers-default-to-metadata-only ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* Task\n:PROPERTIES:\n:ID: from-file-task-11111111-2222-3333-4444-555555555555\n:END:\nOld\n")))
+    (let* ((id "from-file-task-11111111-2222-3333-4444-555555555555")
+           (replace-path-file (eca-org-agenda-test--write-workspace-file
+                               org-directory "replace-path-body.org" "Path line 1\nPath line 2\n"))
+           (append-path-file (eca-org-agenda-test--write-workspace-file
+                              org-directory "append-path-body.org" "Path line 3\n"))
+           (replace-id-file (eca-org-agenda-test--write-workspace-file
+                             org-directory "replace-id-body.org" "ID line 1\n"))
+           (append-id-file (eca-org-agenda-test--write-workspace-file
+                            org-directory "append-id-body.org" "ID line 2\n"))
+           (replace-path (eca-org-agenda-replace-body-by-path-from-file
+                          "Task" replace-path-file :file "todo.org"))
+           (append-path (eca-org-agenda-append-body-by-path-from-file
+                         "Task" append-path-file :file "todo.org"))
+           (replace-id (eca-org-agenda-replace-body-id-from-file id replace-id-file))
+           (append-id (eca-org-agenda-append-body-id-from-file id append-id-file)))
+      (dolist (result (list replace-path append-path replace-id append-id))
+        (should-not (plist-member result :body)))
+      (should (= 2 (plist-get append-id :body-lines)))
+      (should (equal (plist-get (eca-org-agenda-get-body-id id) :body)
+                     "ID line 1\nID line 2")))))
+
+(ert-deftest eca-org-agenda-bridge-test-subtree-readers-support-metadata-only-and-heading-control ()
+  (eca-org-agenda-test--with-temp-workspace
+      (:files '(("todo.org" . "#+title: todo\n\n* Project\n:PROPERTIES:\n:ID: subtree-project-11111111-2222-3333-4444-555555555555\n:END:\nParent body\n** Child\nChild body\n*** Grandchild\nDeep body\n** Child 2\n")))
+    (let* ((id "subtree-project-11111111-2222-3333-4444-555555555555")
+           (by-id (eca-org-agenda-get-subtree-id id))
+           (without-heading (eca-org-agenda-get-subtree-by-path
+                             "Project" :file "todo.org" :include-heading nil))
+           (metadata (eca-org-agenda-get-subtree-by-path
+                      "Project" :file "todo.org" :return-subtree nil))
+           (at (eca-org-agenda-get-subtree-at
+                (plist-get metadata :file)
+                (plist-get metadata :pos)
+                :return-subtree nil)))
+      (should (plist-member by-id :subtree))
+      (should (string-prefix-p "* Project\n" (plist-get by-id :subtree)))
+      (should (plist-member without-heading :subtree))
+      (should-not (string-prefix-p "* Project" (plist-get without-heading :subtree)))
+      (should (string-match-p "Parent body" (plist-get without-heading :subtree)))
+      (should-not (plist-member metadata :subtree))
+      (should-not (plist-member at :subtree))
+      (should (eq (plist-get metadata :has-children) t))
+      (should (= 2 (plist-get metadata :child-count)))
+      (should (= 2 (plist-get at :child-count))))))
 
 (ert-deftest eca-org-agenda-bridge-test-task-state-and-planning-roundtrip ()
   (eca-org-agenda-test--with-temp-workspace

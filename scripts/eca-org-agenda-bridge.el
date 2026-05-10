@@ -34,6 +34,71 @@ Entries may be absolute paths or relative to `org-directory'."
   "Return the current heading's outline path, including the heading itself."
   (eca-org-agenda--plain-strings (org-get-outline-path t nil)))
 
+(defun eca-org-agenda--region-line-count (start end)
+  "Return a compact line count for region START to END."
+  (if (<= end start)
+      0
+    (count-lines start end)))
+
+(defun eca-org-agenda--current-direct-child-count ()
+  "Return the number of direct child headings under the current heading."
+  (save-excursion
+    (org-back-to-heading t)
+    (let* ((parent-level (org-outline-level))
+           (subtree-end (save-excursion
+                          (org-end-of-subtree t t)
+                          (point)))
+           (count 0))
+      (while (and (outline-next-heading)
+                  (< (point) subtree-end))
+        (let ((level (org-outline-level)))
+          (cond
+           ((<= level parent-level)
+            (goto-char subtree-end))
+           ((= level (1+ parent-level))
+            (setq count (1+ count))))))
+      count)))
+
+(defun eca-org-agenda--current-subtree-region (&optional include-heading)
+  "Return the current subtree region as (START . END).
+When INCLUDE-HEADING is nil, START is just after the heading line."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((start (if include-heading
+                     (point)
+                   (line-beginning-position 2)))
+          (end (save-excursion
+                 (org-end-of-subtree t t)
+                 (point))))
+      (cons start end))))
+
+(defun eca-org-agenda--current-entry-size-plist ()
+  "Return body/subtree size and direct-child metadata for current heading."
+  (save-excursion
+    (org-back-to-heading t)
+    (pcase-let* ((`(,body-start . ,body-end)
+                  (eca-org-agenda--current-body-region))
+                 (`(,subtree-start . ,subtree-end)
+                  (eca-org-agenda--current-subtree-region t))
+                 (child-count (eca-org-agenda--current-direct-child-count)))
+      (list
+       :has-children (> child-count 0)
+       :child-count child-count
+       :body-lines (eca-org-agenda--region-line-count body-start body-end)
+       :body-chars (max 0 (- body-end body-start))
+       :subtree-lines (eca-org-agenda--region-line-count subtree-start subtree-end)
+       :subtree-chars (max 0 (- subtree-end subtree-start))))))
+
+(defun eca-org-agenda--plist-without-keys (plist keys)
+  "Return PLIST with entries whose key is in KEYS removed."
+  (let (result)
+    (while plist
+      (let ((key (pop plist))
+            (value (pop plist)))
+        (unless (memq key keys)
+          (setq result (append result (list key value))))))
+    result))
+
 (defun eca-org-agenda--current-entry-plist (&rest extra)
   "Return metadata plist for the current Org heading, extended by EXTRA.
 If point is inside the heading body, normalize back to the heading first."
@@ -53,13 +118,16 @@ If point is inside the heading body, normalize back to the heading first."
 
 (defun eca-org-agenda--current-entry-detail-plist (&rest extra)
   "Return detailed metadata plist for the current Org heading, extended by EXTRA."
-  (append
-   (eca-org-agenda--current-entry-plist)
-   (list
-    :tags (eca-org-agenda--plain-strings (org-get-tags nil t))
-    :scheduled (eca-org-agenda--plain-string (org-entry-get nil "SCHEDULED"))
-    :deadline (eca-org-agenda--plain-string (org-entry-get nil "DEADLINE")))
-   extra))
+  (save-excursion
+    (org-back-to-heading t)
+    (append
+     (eca-org-agenda--current-entry-plist)
+     (list
+      :tags (eca-org-agenda--plain-strings (org-get-tags nil t))
+      :scheduled (eca-org-agenda--plain-string (org-entry-get nil "SCHEDULED"))
+      :deadline (eca-org-agenda--plain-string (org-entry-get nil "DEADLINE")))
+     (eca-org-agenda--current-entry-size-plist)
+     extra)))
 
 (defun eca-org-agenda--require-non-empty-string (value name)
   "Return VALUE trimmed, or signal a `user-error' mentioning NAME."
@@ -276,16 +344,18 @@ PREDICATE is called with point at each heading in turn."
               (save-buffer))))
       (set-marker marker nil))))
 
+(defun eca-org-agenda--current-subtree-string (&optional include-heading)
+  "Return current subtree text, optionally including its heading line."
+  (pcase-let ((`(,start . ,end)
+               (eca-org-agenda--current-subtree-region include-heading)))
+    (let ((tree (buffer-substring-no-properties start end)))
+      (if (string-suffix-p "\n" tree)
+          tree
+        (concat tree "\n")))))
+
 (defun eca-org-agenda--current-subtree-text ()
   "Return the current subtree as plain text, including its heading line."
-  (let* ((start (point))
-         (end (save-excursion
-                (org-end-of-subtree t t)
-                (point)))
-         (tree (buffer-substring-no-properties start end)))
-    (if (string-suffix-p "\n" tree)
-        tree
-      (concat tree "\n"))))
+  (eca-org-agenda--current-subtree-string t))
 
 (defun eca-org-agenda--insert-subtree-at-end-of-file (file tree)
   "Insert TREE as a top-level entry at the end of FILE.
@@ -536,14 +606,42 @@ first child heading if one exists."
         (string-trim-right body)))))
 
 (defun eca-org-agenda--current-entry-with-body-plist (&rest extra)
-  "Return current heading metadata including `:body', extended by EXTRA."
-  (append (eca-org-agenda--current-entry-detail-plist
-           :body (eca-org-agenda--current-body-string))
-          extra))
+  "Return current heading metadata, optionally including `:body'.
+EXTRA may include `:return-body'. When omitted, return the body for backward
+compatibility. Consumed control keywords are not included in the result."
+  (let* ((return-body (if (plist-member extra :return-body)
+                          (plist-get extra :return-body)
+                        t))
+         (extra (eca-org-agenda--plist-without-keys extra '(:return-body))))
+    (append
+     (eca-org-agenda--current-entry-detail-plist)
+     (when return-body
+       (list :body (eca-org-agenda--current-body-string)))
+     extra)))
 
-(defun eca-org-agenda--replace-current-body (body)
+(defun eca-org-agenda--current-entry-with-subtree-plist (&rest extra)
+  "Return current heading metadata, optionally including `:subtree'.
+EXTRA may include `:return-subtree' and `:include-heading'. When omitted, return
+subtree text including the heading line. Consumed control keywords are not
+included in the result."
+  (let* ((return-subtree (if (plist-member extra :return-subtree)
+                             (plist-get extra :return-subtree)
+                           t))
+         (include-heading (if (plist-member extra :include-heading)
+                              (plist-get extra :include-heading)
+                            t))
+         (extra (eca-org-agenda--plist-without-keys
+                 extra '(:return-subtree :include-heading))))
+    (append
+     (eca-org-agenda--current-entry-detail-plist)
+     (when return-subtree
+       (list :subtree (eca-org-agenda--current-subtree-string include-heading)))
+     extra)))
+
+(cl-defun eca-org-agenda--replace-current-body (body &key (return-body t))
   "Replace the current heading body with BODY and return refreshed metadata.
-BODY may be nil or empty to clear the current body. Literal \\n is supported."
+BODY may be nil or empty to clear the current body. Literal \\n is supported.
+When RETURN-BODY is nil, omit the replacement text from the returned plist."
   (let ((entry-pos (save-excursion
                      (org-back-to-heading t)
                      (point))))
@@ -555,11 +653,13 @@ BODY may be nil or empty to clear the current body. Literal \\n is supported."
           (insert (string-trim-right body))
           (unless (bolp) (insert "\n")))
         (goto-char entry-pos)
-        (eca-org-agenda--current-entry-with-body-plist)))))
+        (eca-org-agenda--current-entry-with-body-plist
+         :return-body return-body)))))
 
-(defun eca-org-agenda--append-current-body (body)
+(cl-defun eca-org-agenda--append-current-body (body &key (return-body t))
   "Append BODY to the current heading body and return refreshed metadata.
-BODY must be non-empty. Literal \\n is supported."
+BODY must be non-empty. Literal \\n is supported. When RETURN-BODY is nil, omit
+the appended body text from the returned plist."
   (let ((body (eca-org-agenda--normalize-body body))
         (entry-pos (save-excursion
                      (org-back-to-heading t)
@@ -575,7 +675,8 @@ BODY must be non-empty. Literal \\n is supported."
       (insert (string-trim-right body))
       (unless (bolp) (insert "\n"))
       (goto-char entry-pos)
-      (eca-org-agenda--current-entry-with-body-plist))))
+      (eca-org-agenda--current-entry-with-body-plist
+       :return-body return-body))))
 
 (defun eca-org-agenda-capture-task (title &optional scheduled deadline body file)
   "Capture a TODO task to todo.org (or FILE), optionally with SCHEDULED/DEADLINE."
@@ -811,60 +912,161 @@ ensure the resolved child has an :ID: property."
       :scheduled scheduled
       :deadline deadline))))
 
-(defun eca-org-agenda-get-body-id (id)
-  "Return heading metadata plus `:body' for the entry identified by ID."
+(defun eca-org-agenda--read-body-file (body-file)
+  "Return the contents of readable BODY-FILE as a string."
+  (let ((path (eca-org-agenda--require-non-empty-string body-file "body-file")))
+    (unless (file-readable-p path)
+      (user-error "eca-org-agenda: Body file is not readable: %s" path))
+    (with-temp-buffer
+      (insert-file-contents path)
+      (buffer-string))))
+
+(cl-defun eca-org-agenda-get-body-id (id &key (return-body t))
+  "Return heading metadata plus `:body' for the entry identified by ID.
+When RETURN-BODY is nil, return metadata only."
   (eca-org-agenda--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--current-entry-with-body-plist))))
+     (eca-org-agenda--current-entry-with-body-plist
+      :return-body return-body))))
 
-(cl-defun eca-org-agenda-get-body-by-path (path &key file ensure-id)
+(cl-defun eca-org-agenda-get-body-by-path (path &key file ensure-id (return-body t))
   "Return heading metadata plus `:body' for exact heading PATH.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
-an :ID: property on the matched heading if needed before returning."
+an :ID: property on the matched heading if needed before returning. When
+RETURN-BODY is nil, return metadata only."
   (eca-org-agenda--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--current-entry-with-body-plist))))
+     (eca-org-agenda--current-entry-with-body-plist
+      :return-body return-body))))
 
-(defun eca-org-agenda-replace-body-id (id body)
+(cl-defun eca-org-agenda-replace-body-id (id body &key (return-body t) quiet)
   "Replace the body under entry ID with BODY and return refreshed metadata.
-Pass nil or an empty string to clear the body. BODY supports literal \\n."
+Pass nil or an empty string to clear the body. BODY supports literal \\n. When
+RETURN-BODY is nil or QUIET is non-nil, omit `:body' from the result."
   (eca-org-agenda--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--replace-current-body body))))
+     (eca-org-agenda--replace-current-body
+      body
+      :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-replace-body-by-path (path body &key file ensure-id)
+(cl-defun eca-org-agenda-replace-body-id-from-file (id body-file &key (return-body nil) quiet)
+  "Replace body under ID with contents of BODY-FILE and return metadata.
+By default this omits `:body' from the result for large checkpoint updates."
+  (eca-org-agenda-replace-body-id
+   id
+   (eca-org-agenda--read-body-file body-file)
+   :return-body return-body
+   :quiet quiet))
+
+(cl-defun eca-org-agenda-replace-body-by-path (path body &key file ensure-id (return-body t) quiet)
   "Replace the body under exact heading PATH with BODY and return metadata.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before editing. Pass nil or
-an empty string to clear the body. BODY supports literal \\n."
+an empty string to clear the body. BODY supports literal \\n. When RETURN-BODY
+is nil or QUIET is non-nil, omit `:body' from the result."
   (eca-org-agenda--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--replace-current-body body))))
+     (eca-org-agenda--replace-current-body
+      body
+      :return-body (and return-body (not quiet))))))
 
-(defun eca-org-agenda-append-body-id (id body)
+(cl-defun eca-org-agenda-replace-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
+  "Replace body under exact PATH with contents of BODY-FILE and return metadata.
+By default this omits `:body' from the result for large checkpoint updates."
+  (eca-org-agenda-replace-body-by-path
+   path
+   (eca-org-agenda--read-body-file body-file)
+   :file file
+   :ensure-id ensure-id
+   :return-body return-body
+   :quiet quiet))
+
+(cl-defun eca-org-agenda-append-body-id (id body &key (return-body t) quiet)
   "Append BODY under entry ID and return refreshed metadata.
-BODY must be non-empty and supports literal \\n."
+BODY must be non-empty and supports literal \\n. When RETURN-BODY is nil or QUIET
+is non-nil, omit `:body' from the result."
   (eca-org-agenda--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--append-current-body body))))
+     (eca-org-agenda--append-current-body
+      body
+      :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-append-body-by-path (path body &key file ensure-id)
+(cl-defun eca-org-agenda-append-body-id-from-file (id body-file &key (return-body nil) quiet)
+  "Append contents of BODY-FILE under ID and return metadata.
+By default this omits `:body' from the result for large checkpoint updates."
+  (eca-org-agenda-append-body-id
+   id
+   (eca-org-agenda--read-body-file body-file)
+   :return-body return-body
+   :quiet quiet))
+
+(cl-defun eca-org-agenda-append-body-by-path (path body &key file ensure-id (return-body t) quiet)
   "Append BODY under exact heading PATH and return refreshed metadata.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before editing. BODY must be
-non-empty and supports literal \\n."
+non-empty and supports literal \\n. When RETURN-BODY is nil or QUIET is non-nil,
+omit `:body' from the result."
   (eca-org-agenda--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--append-current-body body))))
+     (eca-org-agenda--append-current-body
+      body
+      :return-body (and return-body (not quiet))))))
+
+(cl-defun eca-org-agenda-append-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
+  "Append contents of BODY-FILE under exact PATH and return metadata.
+By default this omits `:body' from the result for large checkpoint updates."
+  (eca-org-agenda-append-body-by-path
+   path
+   (eca-org-agenda--read-body-file body-file)
+   :file file
+   :ensure-id ensure-id
+   :return-body return-body
+   :quiet quiet))
+
+(cl-defun eca-org-agenda-get-subtree-id (id &key (return-subtree t) (include-heading t))
+  "Return metadata plus `:subtree' for entry ID.
+When RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls
+whether the subtree text starts with the heading line."
+  (eca-org-agenda--with-entry-id
+   id
+   (lambda ()
+     (eca-org-agenda--current-entry-with-subtree-plist
+      :return-subtree return-subtree
+      :include-heading include-heading))))
+
+(cl-defun eca-org-agenda-get-subtree-by-path (path &key file ensure-id (return-subtree t) (include-heading t))
+  "Return metadata plus `:subtree' for exact heading PATH.
+PATH may be a list of heading titles or a slash-separated string. FILE, when
+non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
+an :ID: property on the matched heading if needed before returning. When
+RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls whether
+the subtree text starts with the heading line."
+  (eca-org-agenda--with-heading-by-path
+   path file ensure-id
+   (lambda ()
+     (eca-org-agenda--current-entry-with-subtree-plist
+      :return-subtree return-subtree
+      :include-heading include-heading))))
+
+(cl-defun eca-org-agenda-get-subtree-at (file pos &key (return-subtree t) (include-heading t))
+  "Return metadata plus `:subtree' for heading at FILE/POS.
+When RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls
+whether the subtree text starts with the heading line."
+  (eca-org-agenda--with-entry-at
+   file pos
+   (lambda ()
+     (eca-org-agenda--current-entry-with-subtree-plist
+      :return-subtree return-subtree
+      :include-heading include-heading))))
 
 (defun eca-org-agenda-find-id (id)
   "Return a detailed metadata plist for the Org entry identified by ID."

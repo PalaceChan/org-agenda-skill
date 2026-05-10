@@ -19,7 +19,8 @@ This skill assumes the user already has an Emacs server running, and you must us
 - Inspecting agenda and TODO views
 - Locating arbitrary Org headings exactly by title or outline path
 - Creating or ensuring child headings like `Plan` and `Memory`
-- Reading, replacing, and appending body content under headings
+- Reading subtree metadata and body/subtree content under headings
+- Replacing and appending body content under headings, including large content from files
 - Updating known tasks by ID or exact target
 - Archiving and refiling known entries
 
@@ -64,8 +65,10 @@ emacsclient --eval '
 - `insert-child-*`: always append a fresh direct child.
 - `ensure-child-*`: return an existing exact direct child, or create it if missing.
 - `get-body-*`: inspect the body directly under a heading.
+- `get-subtree-*`: inspect a full subtree, optionally including the heading line.
 - `replace-body-*`: replace only the body region under a heading.
 - `append-body-*`: append only to the body region under a heading.
+- `*-from-file`: read replacement/appended body text inside Emacs from a file, useful for large generated content.
 - `-id`: target a known stable Org ID.
 - `-by-path`: target an exact outline path.
 - `-at`: target an exact `file` + `pos` pair.
@@ -81,8 +84,11 @@ emacsclient --eval '
   - `eca-org-agenda-find-child-heading-id`, `eca-org-agenda-find-child-heading-by-path`
   - `eca-org-agenda-ensure-child-heading-id`, `eca-org-agenda-ensure-child-heading-by-path`
   - `eca-org-agenda-get-body-id`, `eca-org-agenda-get-body-by-path`
+  - `eca-org-agenda-get-subtree-id`, `eca-org-agenda-get-subtree-by-path`, `eca-org-agenda-get-subtree-at`
   - `eca-org-agenda-replace-body-id`, `eca-org-agenda-replace-body-by-path`
+  - `eca-org-agenda-replace-body-id-from-file`, `eca-org-agenda-replace-body-by-path-from-file`
   - `eca-org-agenda-append-body-id`, `eca-org-agenda-append-body-by-path`
+  - `eca-org-agenda-append-body-id-from-file`, `eca-org-agenda-append-body-by-path-from-file`
 
 - `Query and navigation`:
   - `eca-org-agenda-agenda-items`, `eca-org-agenda-todo-items`, `eca-org-agenda-summary`
@@ -106,25 +112,29 @@ emacsclient --eval '
 
 Most lookup, open, and update functions return a plist including:
 
-- `id`
-- `file`
-- `pos`
-- `line`
-- `level`
-- `path`
-- `todo`
-- `title`
+- `:id`
+- `:file`
+- `:pos`
+- `:line`
+- `:level`
+- `:path`
+- `:todo`
+- `:title`
+- `:tags`
+- `:scheduled`
+- `:deadline`
+- `:has-children`
+- `:child-count`
+- `:body-lines`, `:body-chars`
+- `:subtree-lines`, `:subtree-chars`
 
 Agenda and TODO queries also include:
 
-- `agenda-line`
-- `tags`
-- `scheduled`
-- `deadline`
+- `:agenda-line`
 
-Body-oriented functions also include:
+Body-oriented functions include `:body` unless called with `:return-body nil`, or with `:quiet t` where supported.
 
-- `body`
+Subtree-oriented functions include `:subtree` unless called with `:return-subtree nil`.
 
 ## Golden-path workflows
 
@@ -200,6 +210,39 @@ emacsclient --eval '
  "Body editing should preserve child subtrees"
  :file "todo.org")'
 ```
+
+For large generated body content, write the content to a temporary file and let Emacs read it. The `*-from-file` helpers default to metadata-only results so large checkpoint updates do not echo the full body back to the agent:
+
+```bash
+emacsclient --eval '
+(eca-org-agenda-replace-body-by-path-from-file
+ "qol/improve org-agenda skill/Plan"
+ "/tmp/checkpoint-body.org"
+ :file "todo.org"
+ :return-body nil)'
+```
+
+Confirm a large replacement without printing the full body by requesting metadata only:
+
+```bash
+emacsclient --eval '
+(eca-org-agenda-get-body-by-path
+ "qol/improve org-agenda skill/Plan"
+ :file "todo.org"
+ :return-body nil)'
+```
+
+For headings with child subtrees, inspect subtree metadata before deciding whether to read or mutate body content:
+
+```bash
+emacsclient --eval '
+(eca-org-agenda-get-subtree-by-path
+ "qol/improve org-agenda skill/Plan"
+ :file "todo.org"
+ :return-subtree nil)'
+```
+
+When you need the actual subtree text, omit `:return-subtree nil`. Pass `:include-heading nil` to return text below the heading line only.
 
 These body functions edit only the body region directly under the matched heading. They preserve the heading itself, planning lines, drawers, and child subtrees.
 
@@ -284,6 +327,8 @@ emacsclient --eval '
 - For repeated subtree-structure workflows like `Plan` / `Memory`, prefer `ensure-child-heading-*` over `insert-child-heading-*` so reruns stay idempotent.
 - Confirm destructive actions like archiving, refiling, or broad TODO-state changes unless the user already asked for them.
 - Avoid mass rewrites of Org files unless the user explicitly wants bulk maintenance.
+- For large generated bodies, prefer `replace-body-*-from-file` / `append-body-*-from-file` with metadata-only results over passing or returning huge strings.
+- Use `get-subtree-* :return-subtree nil` to inspect child and size metadata before body edits that might otherwise be confused with subtree rewrites.
 - Tag operations are intentionally local-tag operations; they do not remove inherited tags from parent or file-level configuration.
 
 ## Limitations and troubleshooting
@@ -292,6 +337,8 @@ emacsclient --eval '
 - Query results are snapshots; rerun the query after mutations if you need fresh state or positions.
 - `find-child-heading-*` and `ensure-child-heading-*` operate on direct children of the matched parent.
 - Body functions edit only the body directly under the matched heading; they do not rewrite child subtrees.
+- Existing body readers and mutators return `:body` by default for compatibility; pass `:return-body nil` or `:quiet t` where supported to omit it.
+- Subtree readers return `:subtree` by default; pass `:return-subtree nil` to get metadata only.
 - If `org-agenda-files` cannot be found, configure it or create `todo.org` under `org-directory`.
 - `eca-org-agenda-set-todo-at` and `eca-org-agenda-set-todo-id` respect the user's Org configuration. If TODO transitions require notes or logging, be prepared for follow-up work.
 - `eca-org-agenda-refile-id-to-file` appends the moved subtree as a top-level heading in the destination file.
