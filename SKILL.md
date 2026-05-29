@@ -26,7 +26,7 @@ This skill assumes the user already has an Emacs server running, and you must us
 
 ## Important orientation
 
-- `eca-org-agenda-capture-task` still creates **top-level** TODO entries.
+- `oab-capture-task` still creates **top-level** TODO entries.
 - For structured subtree work under an existing heading, prefer this pattern:
   1. Find the target heading exactly.
   2. Ensure the child heading you want exists.
@@ -49,14 +49,14 @@ If the skill is installed under the default skills directory, load it like this:
 
 ```bash
 emacsclient --eval '
-(load "~/.agents/skills/org-agenda/scripts/eca-org-agenda-bridge.el" nil t)'
+(load "~/.agents/skills/org-agenda/scripts/oab.el" nil t)'
 ```
 
 When developing this skill from a repo checkout, load the repo-local copy instead, for example:
 
 ```bash
 emacsclient --eval '
-(load "/path/to/org-agenda-skill/scripts/eca-org-agenda-bridge.el" nil t)'
+(load "/path/to/org-agenda-skill/scripts/oab.el" nil t)'
 ```
 
 ## Naming conventions
@@ -77,36 +77,36 @@ emacsclient --eval '
 ## Public API
 
 - `Capture`:
-  - `eca-org-agenda-capture-task`
+  - `oab-capture-task`
 
 - `Subtree authoring`:
-  - `eca-org-agenda-insert-child-heading-id`, `eca-org-agenda-insert-child-heading-by-path`
-  - `eca-org-agenda-find-child-heading-id`, `eca-org-agenda-find-child-heading-by-path`
-  - `eca-org-agenda-ensure-child-heading-id`, `eca-org-agenda-ensure-child-heading-by-path`
-  - `eca-org-agenda-get-body-id`, `eca-org-agenda-get-body-by-path`
-  - `eca-org-agenda-get-subtree-id`, `eca-org-agenda-get-subtree-by-path`, `eca-org-agenda-get-subtree-at`
-  - `eca-org-agenda-replace-body-id`, `eca-org-agenda-replace-body-by-path`
-  - `eca-org-agenda-replace-body-id-from-file`, `eca-org-agenda-replace-body-by-path-from-file`
-  - `eca-org-agenda-append-body-id`, `eca-org-agenda-append-body-by-path`
-  - `eca-org-agenda-append-body-id-from-file`, `eca-org-agenda-append-body-by-path-from-file`
+  - `oab-insert-child-heading-id`, `oab-insert-child-heading-by-path`
+  - `oab-find-child-heading-id`, `oab-find-child-heading-by-path`
+  - `oab-ensure-child-heading-id`, `oab-ensure-child-heading-by-path`
+  - `oab-get-body-id`, `oab-get-body-by-path`
+  - `oab-get-subtree-id`, `oab-get-subtree-by-path`, `oab-get-subtree-at`
+  - `oab-replace-body-id`, `oab-replace-body-by-path`
+  - `oab-replace-body-id-from-file`, `oab-replace-body-by-path-from-file`
+  - `oab-append-body-id`, `oab-append-body-by-path`
+  - `oab-append-body-id-from-file`, `oab-append-body-by-path-from-file`
 
 - `Query and navigation`:
-  - `eca-org-agenda-agenda-items`, `eca-org-agenda-todo-items`, `eca-org-agenda-summary`
-  - `eca-org-agenda-find-heading-in-file`, `eca-org-agenda-find-heading-by-path`, `eca-org-agenda-find-id`
+  - `oab-agenda-items`, `oab-todo-items`, `oab-summary`
+  - `oab-find-heading-in-file`, `oab-find-heading-by-path`, `oab-find-id`
 
 - `State and planning updates`:
-  - `eca-org-agenda-set-todo-at`, `eca-org-agenda-set-todo-id`
-  - `eca-org-agenda-schedule-at`, `eca-org-agenda-schedule-id`
-  - `eca-org-agenda-deadline-at`, `eca-org-agenda-deadline-id`
+  - `oab-set-todo-at`, `oab-set-todo-id`
+  - `oab-schedule-at`, `oab-schedule-id`
+  - `oab-deadline-at`, `oab-deadline-id`
 
 - `Tags`:
-  - `eca-org-agenda-set-tags-at`, `eca-org-agenda-set-tags-id`
-  - `eca-org-agenda-add-tags-at`, `eca-org-agenda-add-tags-id`
-  - `eca-org-agenda-remove-tags-at`, `eca-org-agenda-remove-tags-id`
+  - `oab-set-tags-at`, `oab-set-tags-id`
+  - `oab-add-tags-at`, `oab-add-tags-id`
+  - `oab-remove-tags-at`, `oab-remove-tags-id`
 
 - `Archive and refile`:
-  - `eca-org-agenda-archive-at`, `eca-org-agenda-archive-id`
-  - `eca-org-agenda-refile-id-to-file`, `eca-org-agenda-refile-id-to-id`
+  - `oab-archive-at`, `oab-archive-id`
+  - `oab-refile-id-to-file`, `oab-refile-id-to-id`
 
 ## Returned metadata
 
@@ -142,7 +142,7 @@ Subtree-oriented functions include `:subtree` unless called with `:return-subtre
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-summary
+(oab-summary
  7
  "today"
  t)'
@@ -152,7 +152,7 @@ Or inspect TODOs directly:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-todo-items
+(oab-todo-items
  t)'
 ```
 
@@ -164,7 +164,7 @@ Find an exact heading title in a known file:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-find-heading-in-file
+(oab-find-heading-in-file
  "todo.org"
  "qol")'
 ```
@@ -173,7 +173,7 @@ Find an exact path and ensure that heading has an ID:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-find-heading-by-path
+(oab-find-heading-by-path
  "qol/improve org-agenda skill/Plan"
  "todo.org"
  t)'
@@ -185,7 +185,7 @@ Ensure a standard child heading exists under a known parent:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-ensure-child-heading-by-path
+(oab-ensure-child-heading-by-path
  "qol/improve org-agenda skill"
  "Plan"
  :file "todo.org")'
@@ -195,7 +195,7 @@ Replace the body under that heading:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-replace-body-by-path
+(oab-replace-body-by-path
  "qol/improve org-agenda skill/Plan"
  "Learn the exact heading lookup should stay targeted\nChild-heading helpers should be idempotent"
  :file "todo.org")'
@@ -205,7 +205,7 @@ Append more body content later:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-append-body-by-path
+(oab-append-body-by-path
  "qol/improve org-agenda skill/Plan"
  "Body editing should preserve child subtrees"
  :file "todo.org")'
@@ -215,7 +215,7 @@ For large generated body content, write the content to a temporary file and let 
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-replace-body-by-path-from-file
+(oab-replace-body-by-path-from-file
  "qol/improve org-agenda skill/Plan"
  "/tmp/checkpoint-body.org"
  :file "todo.org"
@@ -226,7 +226,7 @@ Confirm a large replacement without printing the full body by requesting metadat
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-get-body-by-path
+(oab-get-body-by-path
  "qol/improve org-agenda skill/Plan"
  :file "todo.org"
  :return-body nil)'
@@ -236,7 +236,7 @@ For headings with child subtrees, inspect subtree metadata before deciding wheth
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-get-subtree-by-path
+(oab-get-subtree-by-path
  "qol/improve org-agenda skill/Plan"
  :file "todo.org"
  :return-subtree nil)'
@@ -252,7 +252,7 @@ Always append a fresh child heading:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-insert-child-heading-by-path
+(oab-insert-child-heading-by-path
  "foo"
  "the headline"
  :file "todo.org"
@@ -266,7 +266,7 @@ For repeatable structures like `Plan` / `Memory`, prefer `ensure-child-heading-*
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-capture-task
+(oab-capture-task
  "Refactor the data loader"
  "+1d"
  "+7d")'
@@ -280,7 +280,7 @@ Mark a task `DONE`:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-set-todo-id
+(oab-set-todo-id
  "11111111-2222-3333-4444-555555555555"
  "DONE")'
 ```
@@ -289,14 +289,14 @@ Schedule or clear scheduling:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-schedule-id
+(oab-schedule-id
  "11111111-2222-3333-4444-555555555555"
  "+1d")'
 ```
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-schedule-id
+(oab-schedule-id
  "11111111-2222-3333-4444-555555555555"
  nil)'
 ```
@@ -307,7 +307,7 @@ Archive by ID:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-archive-id
+(oab-archive-id
  "11111111-2222-3333-4444-555555555555")'
 ```
 
@@ -315,7 +315,7 @@ Refile under another known entry:
 
 ```bash
 emacsclient --eval '
-(eca-org-agenda-refile-id-to-id
+(oab-refile-id-to-id
  "11111111-2222-3333-4444-555555555555"
  "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")'
 ```
@@ -333,14 +333,14 @@ emacsclient --eval '
 
 ## Limitations and troubleshooting
 
-- `eca-org-agenda-capture-task` still creates top-level headings only.
+- `oab-capture-task` still creates top-level headings only.
 - Query results are snapshots; rerun the query after mutations if you need fresh state or positions.
 - `find-child-heading-*` and `ensure-child-heading-*` operate on direct children of the matched parent.
 - Body functions edit only the body directly under the matched heading; they do not rewrite child subtrees.
 - Existing body readers and mutators return `:body` by default for compatibility; pass `:return-body nil` or `:quiet t` where supported to omit it.
 - Subtree readers return `:subtree` by default; pass `:return-subtree nil` to get metadata only.
 - If `org-agenda-files` cannot be found, configure it or create `todo.org` under `org-directory`.
-- `eca-org-agenda-set-todo-at` and `eca-org-agenda-set-todo-id` respect the user's Org configuration. If TODO transitions require notes or logging, be prepared for follow-up work.
-- `eca-org-agenda-refile-id-to-file` appends the moved subtree as a top-level heading in the destination file.
+- `oab-set-todo-at` and `oab-set-todo-id` respect the user's Org configuration. If TODO transitions require notes or logging, be prepared for follow-up work.
+- `oab-refile-id-to-file` appends the moved subtree as a top-level heading in the destination file.
 - If natural-language dates behave oddly in the current Emacs session, prefer ISO dates like `2026-03-12` or Org-relative formats like `+1d`.
 - Indirect buffers are useful for focused editing, but they still point at the same underlying Org subtree; edits there affect the source entry.

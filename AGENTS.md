@@ -2,20 +2,20 @@
 
 ## Repository purpose
 
-This repo contains an ECA skill for working with Org agenda data in a running Emacs session, plus the supporting Elisp bridge and its ERT regression suite.
+This repo contains a skill for working with Org agenda data in a running Emacs session, plus the supporting Elisp bridge and its ERT regression suite.
 
 ## Important files
 
 - `SKILL.md` — skill instructions and documented public API.
-- `scripts/eca-org-agenda-bridge.el` — runtime Elisp bridge used by the skill.
-- `test/eca-org-agenda-bridge-test.el` — ERT suite for the bridge.
+- `scripts/oab.el` — runtime Elisp bridge used by the skill.
+- `test/oab-test.el` — ERT suite for the bridge.
 - `test/fixtures/` — golden Org fixtures for formatting-sensitive body-editing tests.
 
 ## Current bridge scope
 
 Capture support is via:
 
-- `eca-org-agenda-capture-task`
+- `oab-capture-task`
 
 Fallback agenda-file behavior is limited to:
 
@@ -23,14 +23,14 @@ Fallback agenda-file behavior is limited to:
 
 If that scope changes, update **all three** of these together:
 
-1. `scripts/eca-org-agenda-bridge.el`
+1. `scripts/oab.el`
 2. `SKILL.md`
-3. `test/eca-org-agenda-bridge-test.el`
+3. `test/oab-test.el`
 
 ## Maintenance rules
 
-- Treat `eca-org-agenda-*` functions documented in `SKILL.md` as the public surface.
-- Treat `eca-org-agenda--*` helpers as private implementation details unless there is a strong reason to expose them.
+- Treat `oab-*` functions documented in `SKILL.md` as the public surface.
+- Treat `oab--*` helpers as private implementation details unless there is a strong reason to expose them.
 - Preserve exact-targeting semantics (`-id`, `-by-path`, `-at`) unless intentionally redesigning the API.
 - Be careful around body-region logic, tag parsing/formatting, and refile/archive behavior; these have dedicated regression coverage because they are easy to break.
 - Prefer fixed ISO dates and explicit fixture IDs in tests so results stay deterministic.
@@ -42,14 +42,14 @@ In this environment, run tests with `emacsclient`:
 ```bash
 emacsclient --eval '
 (progn
-  (load-file "/path/to/org-agenda-skill/test/eca-org-agenda-bridge-test.el")
-  (ert-run-tests-batch "^eca-org-agenda-bridge-test-"))'
+  (load-file "/path/to/org-agenda-skill/test/oab-test.el")
+  (ert-run-tests-batch "^oab-test-"))'
 ```
 
 Notes:
 
 - The suite uses isolated temporary Org workspaces and should not depend on the user's normal Org files.
-- The selector `^eca-org-agenda-bridge-test-` is intentional; it avoids unrelated ERT tests from other loaded projects.
+- The selector `^oab-test-` is intentional; it avoids unrelated ERT tests from other loaded projects.
 
 ## When changing behavior
 

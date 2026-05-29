@@ -1,4 +1,4 @@
-;;; eca-org-agenda-bridge.el --- Org agenda bridge for ECA -*- lexical-binding: t; -*-
+;;; oab.el --- Org agenda bridge for emacsclient automation -*- lexical-binding: t; -*-
 
 (require 'cl-lib)
 (require 'subr-x)
@@ -6,41 +6,41 @@
 (require 'org-agenda)
 (require 'org-id)
 
-(defgroup eca-org-agenda nil
+(defgroup oab nil
   "Org agenda helpers for agentic control via emacsclient."
   :group 'org)
 
-(defcustom eca-org-agenda-fallback-files
+(defcustom oab-fallback-files
   '("todo.org")
   "Fallback Org files used when `org-agenda-files' yields nothing.
 Entries may be absolute paths or relative to `org-directory'."
   :type '(repeat string))
 
-(defcustom eca-org-agenda-add-id t
+(defcustom oab-add-id t
   "When non-nil, ensure new entries created by this bridge have an :ID: property."
   :type 'boolean)
 
-(defun eca-org-agenda--plain-string (s)
+(defun oab--plain-string (s)
   "Return S without text properties, or nil when S is nil."
   (when (stringp s)
     (substring-no-properties s)))
 
-(defun eca-org-agenda--plain-strings (strings)
+(defun oab--plain-strings (strings)
   "Return STRINGS with text properties removed from each element."
   (when strings
-    (mapcar #'eca-org-agenda--plain-string strings)))
+    (mapcar #'oab--plain-string strings)))
 
-(defun eca-org-agenda--current-entry-path ()
+(defun oab--current-entry-path ()
   "Return the current heading's outline path, including the heading itself."
-  (eca-org-agenda--plain-strings (org-get-outline-path t nil)))
+  (oab--plain-strings (org-get-outline-path t nil)))
 
-(defun eca-org-agenda--region-line-count (start end)
+(defun oab--region-line-count (start end)
   "Return a compact line count for region START to END."
   (if (<= end start)
       0
     (count-lines start end)))
 
-(defun eca-org-agenda--current-direct-child-count ()
+(defun oab--current-direct-child-count ()
   "Return the number of direct child headings under the current heading."
   (save-excursion
     (org-back-to-heading t)
@@ -59,7 +59,7 @@ Entries may be absolute paths or relative to `org-directory'."
             (setq count (1+ count))))))
       count)))
 
-(defun eca-org-agenda--current-subtree-region (&optional include-heading)
+(defun oab--current-subtree-region (&optional include-heading)
   "Return the current subtree region as (START . END).
 When INCLUDE-HEADING is nil, START is just after the heading line."
   (save-excursion
@@ -72,24 +72,24 @@ When INCLUDE-HEADING is nil, START is just after the heading line."
                  (point))))
       (cons start end))))
 
-(defun eca-org-agenda--current-entry-size-plist ()
+(defun oab--current-entry-size-plist ()
   "Return body/subtree size and direct-child metadata for current heading."
   (save-excursion
     (org-back-to-heading t)
     (pcase-let* ((`(,body-start . ,body-end)
-                  (eca-org-agenda--current-body-region))
+                  (oab--current-body-region))
                  (`(,subtree-start . ,subtree-end)
-                  (eca-org-agenda--current-subtree-region t))
-                 (child-count (eca-org-agenda--current-direct-child-count)))
+                  (oab--current-subtree-region t))
+                 (child-count (oab--current-direct-child-count)))
       (list
        :has-children (> child-count 0)
        :child-count child-count
-       :body-lines (eca-org-agenda--region-line-count body-start body-end)
+       :body-lines (oab--region-line-count body-start body-end)
        :body-chars (max 0 (- body-end body-start))
-       :subtree-lines (eca-org-agenda--region-line-count subtree-start subtree-end)
+       :subtree-lines (oab--region-line-count subtree-start subtree-end)
        :subtree-chars (max 0 (- subtree-end subtree-start))))))
 
-(defun eca-org-agenda--plist-without-keys (plist keys)
+(defun oab--plist-without-keys (plist keys)
   "Return PLIST with entries whose key is in KEYS removed."
   (let (result)
     (while plist
@@ -99,44 +99,44 @@ When INCLUDE-HEADING is nil, START is just after the heading line."
           (setq result (append result (list key value))))))
     result))
 
-(defun eca-org-agenda--current-entry-plist (&rest extra)
+(defun oab--current-entry-plist (&rest extra)
   "Return metadata plist for the current Org heading, extended by EXTRA.
 If point is inside the heading body, normalize back to the heading first."
   (save-excursion
     (org-back-to-heading t)
     (append
      (list
-      :id (eca-org-agenda--plain-string (org-entry-get nil "ID"))
+      :id (oab--plain-string (org-entry-get nil "ID"))
       :file (buffer-file-name)
       :pos (point)
       :line (line-number-at-pos)
       :level (org-outline-level)
-      :path (eca-org-agenda--current-entry-path)
-      :todo (eca-org-agenda--plain-string (org-get-todo-state))
-      :title (eca-org-agenda--plain-string (org-get-heading t t t t)))
+      :path (oab--current-entry-path)
+      :todo (oab--plain-string (org-get-todo-state))
+      :title (oab--plain-string (org-get-heading t t t t)))
      extra)))
 
-(defun eca-org-agenda--current-entry-detail-plist (&rest extra)
+(defun oab--current-entry-detail-plist (&rest extra)
   "Return detailed metadata plist for the current Org heading, extended by EXTRA."
   (save-excursion
     (org-back-to-heading t)
     (append
-     (eca-org-agenda--current-entry-plist)
+     (oab--current-entry-plist)
      (list
-      :tags (eca-org-agenda--plain-strings (org-get-tags nil t))
-      :scheduled (eca-org-agenda--plain-string (org-entry-get nil "SCHEDULED"))
-      :deadline (eca-org-agenda--plain-string (org-entry-get nil "DEADLINE")))
-     (eca-org-agenda--current-entry-size-plist)
+      :tags (oab--plain-strings (org-get-tags nil t))
+      :scheduled (oab--plain-string (org-entry-get nil "SCHEDULED"))
+      :deadline (oab--plain-string (org-entry-get nil "DEADLINE")))
+     (oab--current-entry-size-plist)
      extra)))
 
-(defun eca-org-agenda--require-non-empty-string (value name)
+(defun oab--require-non-empty-string (value name)
   "Return VALUE trimmed, or signal a `user-error' mentioning NAME."
   (let ((trimmed (string-trim (or value ""))))
     (when (string-empty-p trimmed)
-      (user-error "eca-org-agenda: %s must be a non-empty string" name))
+      (user-error "oab: %s must be a non-empty string" name))
     trimmed))
 
-(defun eca-org-agenda--ensure-org-file (path)
+(defun oab--ensure-org-file (path)
   "Create PATH as a minimal Org file if it does not exist.
 Create parent directories as needed."
   (let ((dir (file-name-directory path)))
@@ -146,7 +146,7 @@ Create parent directories as needed."
     (with-temp-buffer
       (insert "#+title: " (file-name-base path) "\n\n")
       (write-file path))))
-(defun eca-org-agenda--normalize-planning-input (s)
+(defun oab--normalize-planning-input (s)
   "Normalize S for `org-schedule' or `org-deadline'.
 Active timestamps are returned as-is; inactive timestamps are converted
 into active timestamps; plain date strings are returned trimmed."
@@ -158,7 +158,7 @@ into active timestamps; plain date strings are returned trimmed."
         (concat "<" (substring s 1 -1) ">"))
        (t s)))))
 
-(defun eca-org-agenda--normalize-tags-list (tags)
+(defun oab--normalize-tags-list (tags)
   "Normalize TAGS into a deduplicated list of local Org tag strings."
   (let ((parts
          (cond
@@ -175,18 +175,18 @@ into active timestamps; plain date strings are returned trimmed."
                     unless (string-empty-p trimmed)
                     collect trimmed))
           (t
-           (user-error "eca-org-agenda: tags must be nil, a string, or a list of strings")))))
+           (user-error "oab: tags must be nil, a string, or a list of strings")))))
     (when parts
       (delete-dups (copy-sequence parts)))))
 
-(defun eca-org-agenda--require-tags-list (tags name)
+(defun oab--require-tags-list (tags name)
   "Return TAGS normalized as a non-empty list, or signal a `user-error'."
-  (let ((normalized (eca-org-agenda--normalize-tags-list tags)))
+  (let ((normalized (oab--normalize-tags-list tags)))
     (unless normalized
-      (user-error "eca-org-agenda: %s must contain at least one tag" name))
+      (user-error "oab: %s must contain at least one tag" name))
     normalized))
 
-(defun eca-org-agenda--tags-union (current extra)
+(defun oab--tags-union (current extra)
   "Return CURRENT tags with EXTRA appended when missing, preserving order."
   (let ((result (copy-sequence (or current '()))))
     (dolist (tag extra)
@@ -194,45 +194,45 @@ into active timestamps; plain date strings are returned trimmed."
         (setq result (append result (list tag)))))
     result))
 
-(defun eca-org-agenda--tags-difference (current remove)
+(defun oab--tags-difference (current remove)
   "Return CURRENT tags with all REMOVE tags filtered out."
   (cl-loop for tag in (or current '())
            unless (member tag remove)
            collect tag))
 
-(defun eca-org-agenda--timestamp-day (timestamp)
+(defun oab--timestamp-day (timestamp)
   "Return the absolute day number for Org TIMESTAMP, or nil when absent."
   (when (and (stringp timestamp)
              (string-match "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)" timestamp))
     (let ((date (match-string 1 timestamp)))
       (time-to-days (org-read-date nil t date)))))
 
-(defun eca-org-agenda--entry-reference-day (item)
+(defun oab--entry-reference-day (item)
   "Return the earliest planning day for ITEM, or nil when it has none."
-  (let ((days (delq nil (mapcar #'eca-org-agenda--timestamp-day
+  (let ((days (delq nil (mapcar #'oab--timestamp-day
                                 (list (plist-get item :deadline)
                                       (plist-get item :scheduled))))))
     (when days
       (apply #'min days))))
 
-(defun eca-org-agenda--item-key (item)
+(defun oab--item-key (item)
   "Return a stable key string for ITEM."
   (or (plist-get item :id)
       (format "%s:%s"
               (or (plist-get item :file) "")
               (or (plist-get item :pos) 0))))
 
-(defun eca-org-agenda--dedupe-items (items)
+(defun oab--dedupe-items (items)
   "Return ITEMS with duplicate entries removed, preserving first-seen order."
   (let ((seen (make-hash-table :test #'equal))
         result)
     (dolist (item items (nreverse result))
-      (let ((key (eca-org-agenda--item-key item)))
+      (let ((key (oab--item-key item)))
         (unless (gethash key seen)
           (puthash key t seen)
           (push item result))))))
 
-(defun eca-org-agenda--normalize-heading-path (path)
+(defun oab--normalize-heading-path (path)
   "Normalize PATH into a non-empty list of exact heading titles.
 PATH may be a list of strings or a slash-separated string."
   (let ((parts
@@ -246,28 +246,28 @@ PATH may be a list of strings or a slash-separated string."
            (cl-loop for part in path
                     do (unless (stringp part)
                          (user-error
-                          "eca-org-agenda: heading path list must contain only strings"))
+                          "oab: heading path list must contain only strings"))
                     for trimmed = (string-trim part)
                     unless (string-empty-p trimmed)
                     collect trimmed))
           (t
            (user-error
-            "eca-org-agenda: heading path must be a string or list of strings")))))
+            "oab: heading path must be a string or list of strings")))))
     (unless parts
-      (user-error "eca-org-agenda: heading path must not be empty"))
+      (user-error "oab: heading path must not be empty"))
     parts))
 
-(defun eca-org-agenda--heading-search-files (&optional file)
+(defun oab--heading-search-files (&optional file)
   "Return existing Org files to search for headings.
 When FILE is non-nil, search only that file. Otherwise search agenda files."
   (if file
-      (let ((path (eca-org-agenda--resolve-file file)))
+      (let ((path (oab--resolve-file file)))
         (unless (file-exists-p path)
-          (user-error "eca-org-agenda: file does not exist: %s" path))
+          (user-error "oab: file does not exist: %s" path))
         (list path))
-    (eca-org-agenda--agenda-files)))
+    (oab--agenda-files)))
 
-(defun eca-org-agenda--format-heading-match (item)
+(defun oab--format-heading-match (item)
   "Return a human-readable description string for heading ITEM."
   (format "%s in %s"
           (string-join (or (plist-get item :path)
@@ -275,7 +275,7 @@ When FILE is non-nil, search only that file. Otherwise search agenda files."
                        " / ")
           (abbreviate-file-name (or (plist-get item :file) ""))))
 
-(defun eca-org-agenda--collect-heading-matches (files predicate)
+(defun oab--collect-heading-matches (files predicate)
   "Return headings in FILES for which PREDICATE returns non-nil.
 PREDICATE is called with point at each heading in turn."
   (let (matches)
@@ -289,50 +289,50 @@ PREDICATE is called with point at each heading in turn."
             (goto-char (match-beginning 0))
             (org-back-to-heading t)
             (when (funcall predicate)
-              (push (eca-org-agenda--current-entry-detail-plist) matches))
+              (push (oab--current-entry-detail-plist) matches))
             (forward-line 1)))))))
 
-(defun eca-org-agenda--single-heading-match (matches description)
+(defun oab--single-heading-match (matches description)
   "Return the unique element in MATCHES, or signal a `user-error'."
   (pcase matches
     ('()
-     (user-error "eca-org-agenda: no heading found for %s" description))
+     (user-error "oab: no heading found for %s" description))
     (`(,match)
      match)
     (_
      (let* ((preview-count (min 3 (length matches)))
-            (preview (mapconcat #'eca-org-agenda--format-heading-match
+            (preview (mapconcat #'oab--format-heading-match
                                 (cl-subseq matches 0 preview-count)
                                 "; ")))
        (user-error
-        "eca-org-agenda: %d headings found for %s; use a more specific path or file: %s"
+        "oab: %d headings found for %s; use a more specific path or file: %s"
         (length matches)
         description
         preview)))))
 
-(defun eca-org-agenda--ensure-id-for-item (item)
+(defun oab--ensure-id-for-item (item)
   "Ensure ITEM has an :ID: property and return refreshed metadata."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    (plist-get item :file)
    (plist-get item :pos)
    (lambda ()
      (or (org-entry-get nil "ID")
          (org-id-get-create))
-     (eca-org-agenda--current-entry-detail-plist))))
+     (oab--current-entry-detail-plist))))
 
-(defun eca-org-agenda--find-id-marker (id)
+(defun oab--find-id-marker (id)
   "Return a fresh marker for entry ID, updating known ID locations if needed."
-  (let* ((id (eca-org-agenda--require-non-empty-string id "id"))
+  (let* ((id (oab--require-non-empty-string id "id"))
          (marker (or (org-id-find id 'marker)
                      (progn
-                       (org-id-update-id-locations (eca-org-agenda--agenda-files) t)
+                       (org-id-update-id-locations (oab--agenda-files) t)
                        (org-id-find id 'marker)))))
     (or marker
-        (user-error "eca-org-agenda: no entry found for id %s" id))))
+        (user-error "oab: no entry found for id %s" id))))
 
-(defun eca-org-agenda--with-entry-id (id fn)
+(defun oab--with-entry-id (id fn)
   "Visit the entry identified by ID, call FN there, then save its buffer."
-  (let ((marker (eca-org-agenda--find-id-marker id)))
+  (let ((marker (oab--find-id-marker id)))
     (unwind-protect
         (with-current-buffer (marker-buffer marker)
           (unless (derived-mode-p 'org-mode) (org-mode))
@@ -344,24 +344,24 @@ PREDICATE is called with point at each heading in turn."
               (save-buffer))))
       (set-marker marker nil))))
 
-(defun eca-org-agenda--current-subtree-string (&optional include-heading)
+(defun oab--current-subtree-string (&optional include-heading)
   "Return current subtree text, optionally including its heading line."
   (pcase-let ((`(,start . ,end)
-               (eca-org-agenda--current-subtree-region include-heading)))
+               (oab--current-subtree-region include-heading)))
     (let ((tree (buffer-substring-no-properties start end)))
       (if (string-suffix-p "\n" tree)
           tree
         (concat tree "\n")))))
 
-(defun eca-org-agenda--current-subtree-text ()
+(defun oab--current-subtree-text ()
   "Return the current subtree as plain text, including its heading line."
-  (eca-org-agenda--current-subtree-string t))
+  (oab--current-subtree-string t))
 
-(defun eca-org-agenda--insert-subtree-at-end-of-file (file tree)
+(defun oab--insert-subtree-at-end-of-file (file tree)
   "Insert TREE as a top-level entry at the end of FILE.
 Return a detailed metadata plist for the inserted entry."
-  (let ((path (eca-org-agenda--resolve-file file)))
-    (eca-org-agenda--ensure-org-file path)
+  (let ((path (oab--resolve-file file)))
+    (oab--ensure-org-file path)
     (with-current-buffer (find-file-noselect path)
       (unless (derived-mode-p 'org-mode) (org-mode))
       (save-restriction
@@ -373,9 +373,9 @@ Return a detailed metadata plist for the inserted entry."
           (goto-char insert-pos)
           (org-back-to-heading t)
           (save-buffer)
-          (eca-org-agenda--current-entry-detail-plist))))))
+          (oab--current-entry-detail-plist))))))
 
-(defun eca-org-agenda--insert-subtree-under-marker (marker tree)
+(defun oab--insert-subtree-under-marker (marker tree)
   "Insert TREE as the last child of MARKER's entry.
 Return a detailed metadata plist for the inserted entry."
   (with-current-buffer (marker-buffer marker)
@@ -392,32 +392,32 @@ Return a detailed metadata plist for the inserted entry."
           (goto-char insert-pos)
           (org-back-to-heading t)
           (save-buffer)
-          (eca-org-agenda--current-entry-detail-plist))))))
+          (oab--current-entry-detail-plist))))))
 
-(defun eca-org-agenda--resolve-file (file)
+(defun oab--resolve-file (file)
   "Resolve FILE to an absolute path.
 If FILE is relative, resolve relative to `org-directory' when set,
 otherwise relative to `default-directory'."
   (let ((base (or (bound-and-true-p org-directory) default-directory)))
     (expand-file-name file base)))
 
-(defun eca-org-agenda--agenda-files ()
+(defun oab--agenda-files ()
   "Return existing agenda files, or signal a `user-error' if none are available.
 Prefer `org-agenda-files' if it yields anything; otherwise fall back to
-`eca-org-agenda-fallback-files' resolved against `org-directory'."
+`oab-fallback-files' resolved against `org-directory'."
   (let* ((files (ignore-errors (org-agenda-files t)))
          (files (if (and (listp files) files)
                     files
-                  (mapcar #'eca-org-agenda--resolve-file eca-org-agenda-fallback-files)))
+                  (mapcar #'oab--resolve-file oab-fallback-files)))
          (existing-files (cl-remove-if-not #'file-exists-p files)))
     (or existing-files
         (user-error
-         "eca-org-agenda: no agenda files found; set `org-agenda-files' or create one of %s"
+         "oab: no agenda files found; set `org-agenda-files' or create one of %s"
          (mapconcat #'abbreviate-file-name
-                    (mapcar #'eca-org-agenda--resolve-file eca-org-agenda-fallback-files)
+                    (mapcar #'oab--resolve-file oab-fallback-files)
                     ", ")))))
 
-(defun eca-org-agenda--normalize-active-date (s)
+(defun oab--normalize-active-date (s)
   "Normalize S into an active Org timestamp string like <YYYY-MM-DD Day>.
 If S is already active (<...>) return it as-is. If S is inactive ([...]),
 convert it to an active timestamp. Otherwise parse S with `org-read-date'
@@ -433,13 +433,13 @@ convert it to an active timestamp. Otherwise parse S with `org-read-date'
                (ts (format-time-string "<%Y-%m-%d %a>" time)))
           ts))))))
 
-(defun eca-org-agenda--normalize-body (body)
+(defun oab--normalize-body (body)
   "Turn BODY into a string suitable for insertion.
 Allows BODY to contain literal \\n sequences."
   (when (and body (not (string-empty-p (string-trim body))))
     (replace-regexp-in-string "\\\\n" "\n" body t t)))
 
-(defun eca-org-agenda--format-tags (tags)
+(defun oab--format-tags (tags)
   "Format TAGS for an Org heading, returning a string like \" :a:b:\" or \"\".
 TAGS may be nil, a string, or a list of strings."
   (cond
@@ -451,7 +451,7 @@ TAGS may be nil, a string, or a list of strings."
        ;; Keep an already-formed :tag:tag: block.
        ((string-match-p "\\`:\\(?:[^[:space:]:]+:\\)+\\'" t0) (concat " " t0))
        (t
-        (let ((parts (eca-org-agenda--normalize-tags-list t0)))
+        (let ((parts (oab--normalize-tags-list t0)))
           (if parts (concat " :" (string-join parts ":") ":") ""))))))
    ((listp tags)
     (let ((parts (cl-remove-if (lambda (x) (or (null x) (string-empty-p (string-trim x))))
@@ -459,15 +459,15 @@ TAGS may be nil, a string, or a list of strings."
       (if parts (concat " :" (string-join parts ":") ":") "")))
    (t "")))
 
-(defun eca-org-agenda--insert-entry (file heading &optional todo-state scheduled deadline body tags)
+(defun oab--insert-entry (file heading &optional todo-state scheduled deadline body tags)
   "Insert a top-level entry into FILE and return a detailed plist describing it.
 HEADING is the headline text (without TODO keyword).
 TODO-STATE when non-nil is inserted before heading (e.g. \"TODO\").
 SCHEDULED/DEADLINE may be Org timestamps or anything `org-read-date' can parse.
 BODY is inserted as plain text under the entry; literal \\n is supported."
-  (let* ((path (eca-org-agenda--resolve-file file))
-         (heading (eca-org-agenda--require-non-empty-string heading "heading")))
-    (eca-org-agenda--ensure-org-file path)
+  (let* ((path (oab--resolve-file file))
+         (heading (oab--require-non-empty-string heading "heading")))
+    (oab--ensure-org-file path)
     (with-current-buffer (find-file-noselect path)
       (unless (derived-mode-p 'org-mode) (org-mode))
       (save-restriction
@@ -479,27 +479,27 @@ BODY is inserted as plain text under the entry; literal \\n is supported."
           (when (and todo-state (not (string-empty-p (string-trim todo-state))))
             (insert (string-trim todo-state) " "))
           (insert heading)
-          (insert (eca-org-agenda--format-tags tags))
+          (insert (oab--format-tags tags))
           (insert "\n")
-          (let ((sched (eca-org-agenda--normalize-active-date scheduled))
-                (dead (eca-org-agenda--normalize-active-date deadline)))
+          (let ((sched (oab--normalize-active-date scheduled))
+                (dead (oab--normalize-active-date deadline)))
             (when sched (insert "SCHEDULED: " sched "\n"))
             (when dead (insert "DEADLINE: " dead "\n")))
-          (let ((body (eca-org-agenda--normalize-body body)))
+          (let ((body (oab--normalize-body body)))
             (when body
               (insert (string-trim-right body) "\n")))
           (goto-char entry-start)
           (org-back-to-heading t)
-          (when eca-org-agenda-add-id
+          (when oab-add-id
             (org-id-get-create))
           (save-buffer)
-          (eca-org-agenda--current-entry-detail-plist))))))
+          (oab--current-entry-detail-plist))))))
 
-(defun eca-org-agenda--insert-child-heading (title &optional todo-state scheduled deadline body tags force-id)
+(defun oab--insert-child-heading (title &optional todo-state scheduled deadline body tags force-id)
   "Insert a new child heading under the current Org heading.
 Returns a detailed metadata plist for the created child. When FORCE-ID is
-non-nil, create an :ID: property even if `eca-org-agenda-add-id' is nil."
-  (let* ((title (eca-org-agenda--require-non-empty-string title "title"))
+non-nil, create an :ID: property even if `oab-add-id' is nil."
+  (let* ((title (oab--require-non-empty-string title "title"))
          (child-level (1+ (org-outline-level)))
          (stars (make-string child-level ?*)))
     (org-end-of-subtree t t)
@@ -509,25 +509,25 @@ non-nil, create an :ID: property even if `eca-org-agenda-add-id' is nil."
       (when (and todo-state (not (string-empty-p (string-trim todo-state))))
         (insert (string-trim todo-state) " "))
       (insert title)
-      (insert (eca-org-agenda--format-tags tags))
+      (insert (oab--format-tags tags))
       (insert "\n")
-      (let ((sched (eca-org-agenda--normalize-active-date scheduled))
-            (dead (eca-org-agenda--normalize-active-date deadline)))
+      (let ((sched (oab--normalize-active-date scheduled))
+            (dead (oab--normalize-active-date deadline)))
         (when sched (insert "SCHEDULED: " sched "\n"))
         (when dead (insert "DEADLINE: " dead "\n")))
-      (let ((body (eca-org-agenda--normalize-body body)))
+      (let ((body (oab--normalize-body body)))
         (when body
           (insert (string-trim-right body) "\n")))
       (goto-char entry-start)
       (org-back-to-heading t)
-      (when (or force-id eca-org-agenda-add-id)
+      (when (or force-id oab-add-id)
         (org-id-get-create))
-      (eca-org-agenda--current-entry-detail-plist))))
+      (oab--current-entry-detail-plist))))
 
-(defun eca-org-agenda--collect-direct-child-matches (title)
+(defun oab--collect-direct-child-matches (title)
   "Return direct child headings named TITLE under the current heading."
-  (let* ((title (eca-org-agenda--require-non-empty-string title "title"))
-         (parent (eca-org-agenda--current-entry-detail-plist))
+  (let* ((title (oab--require-non-empty-string title "title"))
+         (parent (oab--current-entry-detail-plist))
          (parent-level (plist-get parent :level))
          (subtree-end (save-excursion
                         (org-end-of-subtree t t)
@@ -541,37 +541,37 @@ non-nil, create an :ID: property even if `eca-org-agenda-add-id' is nil."
            ((<= level parent-level)
             (goto-char subtree-end))
            ((= level (1+ parent-level))
-            (when (string= (or (eca-org-agenda--plain-string
+            (when (string= (or (oab--plain-string
                                 (org-get-heading t t t t))
                                "")
                            title)
-              (push (eca-org-agenda--current-entry-detail-plist) matches)))))))
+              (push (oab--current-entry-detail-plist) matches)))))))
     (nreverse matches)))
 
-(cl-defun eca-org-agenda--resolve-direct-child-heading (title &key ensure-id insert-missing todo-state tags body scheduled deadline)
+(cl-defun oab--resolve-direct-child-heading (title &key ensure-id insert-missing todo-state tags body scheduled deadline)
   "Return or create a direct child heading named TITLE under the current heading.
 When ENSURE-ID is non-nil, ensure the resolved child has an :ID: property.
 When INSERT-MISSING is non-nil, insert a fresh child if no exact direct child
 exists. TODO-STATE, TAGS, BODY, SCHEDULED, and DEADLINE are used only when a
 missing child must be inserted."
-  (let* ((parent (eca-org-agenda--current-entry-detail-plist))
-         (matches (eca-org-agenda--collect-direct-child-matches title))
+  (let* ((parent (oab--current-entry-detail-plist))
+         (matches (oab--collect-direct-child-matches title))
          (description (format "child title %S under %s"
                               title
-                              (eca-org-agenda--format-heading-match parent))))
+                              (oab--format-heading-match parent))))
     (cond
      ((null matches)
       (if insert-missing
-          (eca-org-agenda--insert-child-heading
+          (oab--insert-child-heading
            title todo-state scheduled deadline body tags ensure-id)
-        (user-error "eca-org-agenda: no heading found for %s" description)))
+        (user-error "oab: no heading found for %s" description)))
      (t
-      (let ((match (eca-org-agenda--single-heading-match matches description)))
+      (let ((match (oab--single-heading-match matches description)))
         (if ensure-id
-            (eca-org-agenda--ensure-id-for-item match)
+            (oab--ensure-id-for-item match)
           match))))))
 
-(defun eca-org-agenda--current-body-region ()
+(defun oab--current-body-region ()
   "Return the editable body region of the current heading as (START . END).
 This excludes the headline, planning lines, and drawers, and stops before the
 first child heading if one exists."
@@ -598,28 +598,28 @@ first child heading if one exists."
                          subtree-end)))))
       (cons body-start body-end))))
 
-(defun eca-org-agenda--current-body-string ()
+(defun oab--current-body-string ()
   "Return the current heading body as a plain string, or nil when empty."
-  (pcase-let ((`(,start . ,end) (eca-org-agenda--current-body-region)))
+  (pcase-let ((`(,start . ,end) (oab--current-body-region)))
     (let ((body (buffer-substring-no-properties start end)))
       (unless (string-empty-p (string-trim-right body))
         (string-trim-right body)))))
 
-(defun eca-org-agenda--current-entry-with-body-plist (&rest extra)
+(defun oab--current-entry-with-body-plist (&rest extra)
   "Return current heading metadata, optionally including `:body'.
 EXTRA may include `:return-body'. When omitted, return the body for backward
 compatibility. Consumed control keywords are not included in the result."
   (let* ((return-body (if (plist-member extra :return-body)
                           (plist-get extra :return-body)
                         t))
-         (extra (eca-org-agenda--plist-without-keys extra '(:return-body))))
+         (extra (oab--plist-without-keys extra '(:return-body))))
     (append
-     (eca-org-agenda--current-entry-detail-plist)
+     (oab--current-entry-detail-plist)
      (when return-body
-       (list :body (eca-org-agenda--current-body-string)))
+       (list :body (oab--current-body-string)))
      extra)))
 
-(defun eca-org-agenda--current-entry-with-subtree-plist (&rest extra)
+(defun oab--current-entry-with-subtree-plist (&rest extra)
   "Return current heading metadata, optionally including `:subtree'.
 EXTRA may include `:return-subtree' and `:include-heading'. When omitted, return
 subtree text including the heading line. Consumed control keywords are not
@@ -630,43 +630,43 @@ included in the result."
          (include-heading (if (plist-member extra :include-heading)
                               (plist-get extra :include-heading)
                             t))
-         (extra (eca-org-agenda--plist-without-keys
+         (extra (oab--plist-without-keys
                  extra '(:return-subtree :include-heading))))
     (append
-     (eca-org-agenda--current-entry-detail-plist)
+     (oab--current-entry-detail-plist)
      (when return-subtree
-       (list :subtree (eca-org-agenda--current-subtree-string include-heading)))
+       (list :subtree (oab--current-subtree-string include-heading)))
      extra)))
 
-(cl-defun eca-org-agenda--replace-current-body (body &key (return-body t))
+(cl-defun oab--replace-current-body (body &key (return-body t))
   "Replace the current heading body with BODY and return refreshed metadata.
 BODY may be nil or empty to clear the current body. Literal \\n is supported.
 When RETURN-BODY is nil, omit the replacement text from the returned plist."
   (let ((entry-pos (save-excursion
                      (org-back-to-heading t)
                      (point))))
-    (pcase-let ((`(,start . ,end) (eca-org-agenda--current-body-region)))
-      (let ((body (eca-org-agenda--normalize-body body)))
+    (pcase-let ((`(,start . ,end) (oab--current-body-region)))
+      (let ((body (oab--normalize-body body)))
         (delete-region start end)
         (goto-char start)
         (when body
           (insert (string-trim-right body))
           (unless (bolp) (insert "\n")))
         (goto-char entry-pos)
-        (eca-org-agenda--current-entry-with-body-plist
+        (oab--current-entry-with-body-plist
          :return-body return-body)))))
 
-(cl-defun eca-org-agenda--append-current-body (body &key (return-body t))
+(cl-defun oab--append-current-body (body &key (return-body t))
   "Append BODY to the current heading body and return refreshed metadata.
 BODY must be non-empty. Literal \\n is supported. When RETURN-BODY is nil, omit
 the appended body text from the returned plist."
-  (let ((body (eca-org-agenda--normalize-body body))
+  (let ((body (oab--normalize-body body))
         (entry-pos (save-excursion
                      (org-back-to-heading t)
                      (point))))
     (unless body
-      (user-error "eca-org-agenda: body must be a non-empty string"))
-    (pcase-let ((`(,start . ,end) (eca-org-agenda--current-body-region)))
+      (user-error "oab: body must be a non-empty string"))
+    (pcase-let ((`(,start . ,end) (oab--current-body-region)))
       (goto-char end)
       (when (and (> end start)
                  (> (point) (point-min))
@@ -675,19 +675,19 @@ the appended body text from the returned plist."
       (insert (string-trim-right body))
       (unless (bolp) (insert "\n"))
       (goto-char entry-pos)
-      (eca-org-agenda--current-entry-with-body-plist
+      (oab--current-entry-with-body-plist
        :return-body return-body))))
 
-(defun eca-org-agenda-capture-task (title &optional scheduled deadline body file)
+(defun oab-capture-task (title &optional scheduled deadline body file)
   "Capture a TODO task to todo.org (or FILE), optionally with SCHEDULED/DEADLINE."
-  (eca-org-agenda--insert-entry (or file "todo.org") title "TODO" scheduled deadline body nil))
+  (oab--insert-entry (or file "todo.org") title "TODO" scheduled deadline body nil))
 
-(defun eca-org-agenda--collect-view-items (key &optional span start ensure-id)
+(defun oab--collect-view-items (key &optional span start ensure-id)
   "Run org-agenda with KEY and collect headline-backed items from the agenda buffer.
 KEY is an agenda dispatcher key string (e.g. \"a\" or \"t\").
 SPAN is number of days (agenda views). START is an org date string.
 If ENSURE-ID is non-nil, create IDs for items missing them."
-  (let* ((org-agenda-files (eca-org-agenda--agenda-files))
+  (let* ((org-agenda-files (oab--agenda-files))
          (org-agenda-span (or span org-agenda-span))
          (org-agenda-start-day (when start (org-read-date nil nil start)))
          (bufname org-agenda-buffer-name)
@@ -712,33 +712,33 @@ If ENSURE-ID is non-nil, create IDs for items missing them."
                       (when (and ensure-id (not (org-entry-get nil "ID")))
                         (org-id-get-create)
                         (save-buffer))
-                      (push (eca-org-agenda--current-entry-detail-plist
+                      (push (oab--current-entry-detail-plist
                              :agenda-line agenda-line)
                             items))))))
             (forward-line 1)))))
     (nreverse items)))
 
-(defun eca-org-agenda-agenda-items (&optional span start ensure-id)
+(defun oab-agenda-items (&optional span start ensure-id)
   "Return agenda items (dispatcher key \"a\") as a list of plists."
-  (eca-org-agenda--collect-view-items "a" span start ensure-id))
+  (oab--collect-view-items "a" span start ensure-id))
 
-(defun eca-org-agenda-todo-items (&optional ensure-id)
+(defun oab-todo-items (&optional ensure-id)
   "Return TODO list items (dispatcher key \"t\") as a list of plists."
-  (eca-org-agenda--collect-view-items "t" nil nil ensure-id))
+  (oab--collect-view-items "t" nil nil ensure-id))
 
-(defun eca-org-agenda-summary (&optional span start ensure-id)
+(defun oab-summary (&optional span start ensure-id)
   "Return a simple grouped summary of agenda and TODO items.
 Buckets are relative to START, which defaults to today. The returned plist
 contains `:counts', `:overdue', `:today', `:upcoming', and `:unscheduled'."
   (let* ((reference-time (org-read-date nil t (or start "today")))
          (reference-day (time-to-days reference-time))
-         (agenda-items (eca-org-agenda--dedupe-items
-                        (eca-org-agenda-agenda-items span start ensure-id)))
-         (todo-items (eca-org-agenda--dedupe-items
-                      (eca-org-agenda-todo-items ensure-id)))
+         (agenda-items (oab--dedupe-items
+                        (oab-agenda-items span start ensure-id)))
+         (todo-items (oab--dedupe-items
+                      (oab-todo-items ensure-id)))
          overdue today upcoming unscheduled)
     (dolist (item agenda-items)
-      (let ((day (eca-org-agenda--entry-reference-day item)))
+      (let ((day (oab--entry-reference-day item)))
         (cond
          ((and day (< day reference-day))
           (push item overdue))
@@ -768,18 +768,18 @@ contains `:counts', `:overdue', `:today', `:upcoming', and `:unscheduled'."
      :upcoming upcoming
      :unscheduled unscheduled)))
 
-(defun eca-org-agenda-find-heading-in-file (file title &optional ensure-id)
+(defun oab-find-heading-in-file (file title &optional ensure-id)
   "Return a detailed plist for exact heading TITLE in FILE.
 This works for any Org heading, not just agenda or TODO entries.
 When ENSURE-ID is non-nil, create an :ID: property on the matched heading if
 needed. The search requires exactly one exact title match in FILE."
-  (let* ((title (eca-org-agenda--require-non-empty-string title "title"))
-         (path (car (eca-org-agenda--heading-search-files file)))
-         (match (eca-org-agenda--single-heading-match
-                 (eca-org-agenda--collect-heading-matches
+  (let* ((title (oab--require-non-empty-string title "title"))
+         (path (car (oab--heading-search-files file)))
+         (match (oab--single-heading-match
+                 (oab--collect-heading-matches
                   (list path)
                   (lambda ()
-                    (string= (or (eca-org-agenda--plain-string
+                    (string= (or (oab--plain-string
                                   (org-get-heading t t t t))
                                  "")
                              title)))
@@ -787,22 +787,22 @@ needed. The search requires exactly one exact title match in FILE."
                          title
                          (abbreviate-file-name path)))))
     (if ensure-id
-        (eca-org-agenda--ensure-id-for-item match)
+        (oab--ensure-id-for-item match)
       match)))
 
-(defun eca-org-agenda-find-heading-by-path (path &optional file ensure-id)
+(defun oab-find-heading-by-path (path &optional file ensure-id)
   "Return a detailed plist for exact outline PATH.
 PATH may be a list of heading titles or a slash-separated string.
 When FILE is nil, search agenda files and require a unique exact path match.
 When ENSURE-ID is non-nil, create an :ID: property on the matched heading if
 needed."
-  (let* ((normalized-path (eca-org-agenda--normalize-heading-path path))
-         (files (eca-org-agenda--heading-search-files file))
-         (match (eca-org-agenda--single-heading-match
-                 (eca-org-agenda--collect-heading-matches
+  (let* ((normalized-path (oab--normalize-heading-path path))
+         (files (oab--heading-search-files file))
+         (match (oab--single-heading-match
+                 (oab--collect-heading-matches
                   files
                   (lambda ()
-                    (equal (eca-org-agenda--current-entry-path)
+                    (equal (oab--current-entry-path)
                            normalized-path)))
                  (format "path %S%s"
                          normalized-path
@@ -811,32 +811,32 @@ needed."
                                      (abbreviate-file-name (car files)))
                            "")))))
     (if ensure-id
-        (eca-org-agenda--ensure-id-for-item match)
+        (oab--ensure-id-for-item match)
       match)))
 
-(defun eca-org-agenda--with-heading-by-path (path file ensure-id fn)
+(defun oab--with-heading-by-path (path file ensure-id fn)
   "Resolve exact PATH, visit that heading, and call FN there."
-  (let ((entry (eca-org-agenda-find-heading-by-path path file ensure-id)))
-    (eca-org-agenda--with-entry-at
+  (let ((entry (oab-find-heading-by-path path file ensure-id)))
+    (oab--with-entry-at
      (plist-get entry :file)
      (plist-get entry :pos)
      fn)))
 
-(cl-defun eca-org-agenda-insert-child-heading-id (parent-id title &key todo-state tags body scheduled deadline ensure-id)
+(cl-defun oab-insert-child-heading-id (parent-id title &key todo-state tags body scheduled deadline ensure-id)
   "Insert a new child heading under PARENT-ID and return its metadata.
 This always inserts a fresh child as the last child of the parent subtree.
 Use TODO-STATE to create a TODO heading, leave it nil for a plain heading.
 TAGS may be nil, a string, or a list of strings. BODY supports literal \\n.
 SCHEDULED and DEADLINE accept Org timestamps or anything `org-read-date' can
 parse. When ENSURE-ID is non-nil, force an :ID: property on the new child even
-if `eca-org-agenda-add-id' is nil."
-  (eca-org-agenda--with-entry-id
+if `oab-add-id' is nil."
+  (oab--with-entry-id
    parent-id
    (lambda ()
-     (eca-org-agenda--insert-child-heading
+     (oab--insert-child-heading
       title todo-state scheduled deadline body tags ensure-id))))
 
-(cl-defun eca-org-agenda-insert-child-heading-by-path (path title &key file ensure-parent-id todo-state tags body scheduled deadline ensure-id)
+(cl-defun oab-insert-child-heading-by-path (path title &key file ensure-parent-id todo-state tags body scheduled deadline ensure-id)
   "Insert a new child heading under exact parent PATH and return its metadata.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the parent search to that file. When ENSURE-PARENT-ID is
@@ -844,44 +844,44 @@ non-nil, create an :ID: property on the matched parent heading if needed before
 inserting the child. The child is always inserted as the last child.
 Use TODO-STATE to create a TODO heading, leave it nil for a plain heading.
 When ENSURE-ID is non-nil, force an :ID: property on the new child even if
-`eca-org-agenda-add-id' is nil."
-  (eca-org-agenda--with-heading-by-path
+`oab-add-id' is nil."
+  (oab--with-heading-by-path
    path file ensure-parent-id
    (lambda ()
-     (eca-org-agenda--insert-child-heading
+     (oab--insert-child-heading
       title todo-state scheduled deadline body tags ensure-id))))
 
-(defun eca-org-agenda-find-child-heading-id (parent-id title &optional ensure-id)
+(defun oab-find-child-heading-id (parent-id title &optional ensure-id)
   "Return the exact direct child heading TITLE under PARENT-ID.
 When ENSURE-ID is non-nil, create an :ID: property on the matched child if
 needed. The child match must be unique among direct children of the parent."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    parent-id
    (lambda ()
-     (eca-org-agenda--resolve-direct-child-heading title :ensure-id ensure-id))))
+     (oab--resolve-direct-child-heading title :ensure-id ensure-id))))
 
-(cl-defun eca-org-agenda-find-child-heading-by-path (path title &key file ensure-parent-id ensure-id)
+(cl-defun oab-find-child-heading-by-path (path title &key file ensure-parent-id ensure-id)
   "Return the exact direct child heading TITLE under exact parent PATH.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the parent search to that file. When ENSURE-PARENT-ID is
 non-nil, create an :ID: property on the matched parent heading if needed before
 resolving the child. When ENSURE-ID is non-nil, create an :ID: property on the
 matched child if needed."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-parent-id
    (lambda ()
-     (eca-org-agenda--resolve-direct-child-heading title :ensure-id ensure-id))))
+     (oab--resolve-direct-child-heading title :ensure-id ensure-id))))
 
-(cl-defun eca-org-agenda-ensure-child-heading-id (parent-id title &key todo-state tags body scheduled deadline ensure-id)
+(cl-defun oab-ensure-child-heading-id (parent-id title &key todo-state tags body scheduled deadline ensure-id)
   "Return or create direct child heading TITLE under PARENT-ID.
 If an exact direct child already exists, return it. Otherwise insert a fresh
 child as the last child of the parent subtree using TODO-STATE, TAGS, BODY,
 SCHEDULED, and DEADLINE. When ENSURE-ID is non-nil, ensure the resolved child
 has an :ID: property."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    parent-id
    (lambda ()
-     (eca-org-agenda--resolve-direct-child-heading
+     (oab--resolve-direct-child-heading
       title
       :ensure-id ensure-id
       :insert-missing t
@@ -891,7 +891,7 @@ has an :ID: property."
       :scheduled scheduled
       :deadline deadline))))
 
-(cl-defun eca-org-agenda-ensure-child-heading-by-path (path title &key file ensure-parent-id todo-state tags body scheduled deadline ensure-id)
+(cl-defun oab-ensure-child-heading-by-path (path title &key file ensure-parent-id todo-state tags body scheduled deadline ensure-id)
   "Return or create direct child heading TITLE under exact parent PATH.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the parent search to that file. When ENSURE-PARENT-ID is
@@ -899,10 +899,10 @@ non-nil, create an :ID: property on the matched parent heading if needed before
 resolving the child. If the child is missing, insert it as the last child using
 TODO-STATE, TAGS, BODY, SCHEDULED, and DEADLINE. When ENSURE-ID is non-nil,
 ensure the resolved child has an :ID: property."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-parent-id
    (lambda ()
-     (eca-org-agenda--resolve-direct-child-heading
+     (oab--resolve-direct-child-heading
       title
       :ensure-id ensure-id
       :insert-missing t
@@ -912,186 +912,186 @@ ensure the resolved child has an :ID: property."
       :scheduled scheduled
       :deadline deadline))))
 
-(defun eca-org-agenda--read-body-file (body-file)
+(defun oab--read-body-file (body-file)
   "Return the contents of readable BODY-FILE as a string."
-  (let ((path (eca-org-agenda--require-non-empty-string body-file "body-file")))
+  (let ((path (oab--require-non-empty-string body-file "body-file")))
     (unless (file-readable-p path)
-      (user-error "eca-org-agenda: Body file is not readable: %s" path))
+      (user-error "oab: Body file is not readable: %s" path))
     (with-temp-buffer
       (insert-file-contents path)
       (buffer-string))))
 
-(cl-defun eca-org-agenda-get-body-id (id &key (return-body t))
+(cl-defun oab-get-body-id (id &key (return-body t))
   "Return heading metadata plus `:body' for the entry identified by ID.
 When RETURN-BODY is nil, return metadata only."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--current-entry-with-body-plist
+     (oab--current-entry-with-body-plist
       :return-body return-body))))
 
-(cl-defun eca-org-agenda-get-body-by-path (path &key file ensure-id (return-body t))
+(cl-defun oab-get-body-by-path (path &key file ensure-id (return-body t))
   "Return heading metadata plus `:body' for exact heading PATH.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before returning. When
 RETURN-BODY is nil, return metadata only."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--current-entry-with-body-plist
+     (oab--current-entry-with-body-plist
       :return-body return-body))))
 
-(cl-defun eca-org-agenda-replace-body-id (id body &key (return-body t) quiet)
+(cl-defun oab-replace-body-id (id body &key (return-body t) quiet)
   "Replace the body under entry ID with BODY and return refreshed metadata.
 Pass nil or an empty string to clear the body. BODY supports literal \\n. When
 RETURN-BODY is nil or QUIET is non-nil, omit `:body' from the result."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--replace-current-body
+     (oab--replace-current-body
       body
       :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-replace-body-id-from-file (id body-file &key (return-body nil) quiet)
+(cl-defun oab-replace-body-id-from-file (id body-file &key (return-body nil) quiet)
   "Replace body under ID with contents of BODY-FILE and return metadata.
 By default this omits `:body' from the result for large checkpoint updates."
-  (eca-org-agenda-replace-body-id
+  (oab-replace-body-id
    id
-   (eca-org-agenda--read-body-file body-file)
+   (oab--read-body-file body-file)
    :return-body return-body
    :quiet quiet))
 
-(cl-defun eca-org-agenda-replace-body-by-path (path body &key file ensure-id (return-body t) quiet)
+(cl-defun oab-replace-body-by-path (path body &key file ensure-id (return-body t) quiet)
   "Replace the body under exact heading PATH with BODY and return metadata.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before editing. Pass nil or
 an empty string to clear the body. BODY supports literal \\n. When RETURN-BODY
 is nil or QUIET is non-nil, omit `:body' from the result."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--replace-current-body
+     (oab--replace-current-body
       body
       :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-replace-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
+(cl-defun oab-replace-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
   "Replace body under exact PATH with contents of BODY-FILE and return metadata.
 By default this omits `:body' from the result for large checkpoint updates."
-  (eca-org-agenda-replace-body-by-path
+  (oab-replace-body-by-path
    path
-   (eca-org-agenda--read-body-file body-file)
+   (oab--read-body-file body-file)
    :file file
    :ensure-id ensure-id
    :return-body return-body
    :quiet quiet))
 
-(cl-defun eca-org-agenda-append-body-id (id body &key (return-body t) quiet)
+(cl-defun oab-append-body-id (id body &key (return-body t) quiet)
   "Append BODY under entry ID and return refreshed metadata.
 BODY must be non-empty and supports literal \\n. When RETURN-BODY is nil or QUIET
 is non-nil, omit `:body' from the result."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--append-current-body
+     (oab--append-current-body
       body
       :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-append-body-id-from-file (id body-file &key (return-body nil) quiet)
+(cl-defun oab-append-body-id-from-file (id body-file &key (return-body nil) quiet)
   "Append contents of BODY-FILE under ID and return metadata.
 By default this omits `:body' from the result for large checkpoint updates."
-  (eca-org-agenda-append-body-id
+  (oab-append-body-id
    id
-   (eca-org-agenda--read-body-file body-file)
+   (oab--read-body-file body-file)
    :return-body return-body
    :quiet quiet))
 
-(cl-defun eca-org-agenda-append-body-by-path (path body &key file ensure-id (return-body t) quiet)
+(cl-defun oab-append-body-by-path (path body &key file ensure-id (return-body t) quiet)
   "Append BODY under exact heading PATH and return refreshed metadata.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before editing. BODY must be
 non-empty and supports literal \\n. When RETURN-BODY is nil or QUIET is non-nil,
 omit `:body' from the result."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--append-current-body
+     (oab--append-current-body
       body
       :return-body (and return-body (not quiet))))))
 
-(cl-defun eca-org-agenda-append-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
+(cl-defun oab-append-body-by-path-from-file (path body-file &key file ensure-id (return-body nil) quiet)
   "Append contents of BODY-FILE under exact PATH and return metadata.
 By default this omits `:body' from the result for large checkpoint updates."
-  (eca-org-agenda-append-body-by-path
+  (oab-append-body-by-path
    path
-   (eca-org-agenda--read-body-file body-file)
+   (oab--read-body-file body-file)
    :file file
    :ensure-id ensure-id
    :return-body return-body
    :quiet quiet))
 
-(cl-defun eca-org-agenda-get-subtree-id (id &key (return-subtree t) (include-heading t))
+(cl-defun oab-get-subtree-id (id &key (return-subtree t) (include-heading t))
   "Return metadata plus `:subtree' for entry ID.
 When RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls
 whether the subtree text starts with the heading line."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--current-entry-with-subtree-plist
+     (oab--current-entry-with-subtree-plist
       :return-subtree return-subtree
       :include-heading include-heading))))
 
-(cl-defun eca-org-agenda-get-subtree-by-path (path &key file ensure-id (return-subtree t) (include-heading t))
+(cl-defun oab-get-subtree-by-path (path &key file ensure-id (return-subtree t) (include-heading t))
   "Return metadata plus `:subtree' for exact heading PATH.
 PATH may be a list of heading titles or a slash-separated string. FILE, when
 non-nil, restricts the search to that file. When ENSURE-ID is non-nil, create
 an :ID: property on the matched heading if needed before returning. When
 RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls whether
 the subtree text starts with the heading line."
-  (eca-org-agenda--with-heading-by-path
+  (oab--with-heading-by-path
    path file ensure-id
    (lambda ()
-     (eca-org-agenda--current-entry-with-subtree-plist
+     (oab--current-entry-with-subtree-plist
       :return-subtree return-subtree
       :include-heading include-heading))))
 
-(cl-defun eca-org-agenda-get-subtree-at (file pos &key (return-subtree t) (include-heading t))
+(cl-defun oab-get-subtree-at (file pos &key (return-subtree t) (include-heading t))
   "Return metadata plus `:subtree' for heading at FILE/POS.
 When RETURN-SUBTREE is nil, return metadata only. INCLUDE-HEADING controls
 whether the subtree text starts with the heading line."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (eca-org-agenda--current-entry-with-subtree-plist
+     (oab--current-entry-with-subtree-plist
       :return-subtree return-subtree
       :include-heading include-heading))))
 
-(defun eca-org-agenda-find-id (id)
+(defun oab-find-id (id)
   "Return a detailed metadata plist for the Org entry identified by ID."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (eca-org-agenda--current-entry-detail-plist))))
+     (oab--current-entry-detail-plist))))
 
-(defun eca-org-agenda-open-id (id &optional indirect)
+(defun oab-open-id (id &optional indirect)
   "Open the Org entry identified by ID.
 If INDIRECT is non-nil, open the subtree in an indirect buffer."
-  (let ((marker (eca-org-agenda--find-id-marker id)))
+  (let ((marker (oab--find-id-marker id)))
     (unwind-protect
-        (eca-org-agenda-open-at
+        (oab-open-at
          (buffer-file-name (marker-buffer marker))
          (marker-position marker)
          indirect)
       (set-marker marker nil))))
 
-(defun eca-org-agenda-open-at (file pos &optional indirect)
+(defun oab-open-at (file pos &optional indirect)
   "Open FILE at POS. If INDIRECT is non-nil, open subtree in an indirect buffer.
 Returns a plist describing the entry."
-  (let* ((path (eca-org-agenda--resolve-file file)))
+  (let* ((path (oab--resolve-file file)))
     (unless (file-exists-p path)
-      (error "eca-org-agenda: file does not exist: %s" path))
+      (error "oab: file does not exist: %s" path))
     (find-file path)
     (unless (derived-mode-p 'org-mode) (org-mode))
     (save-restriction
@@ -1099,16 +1099,16 @@ Returns a plist describing the entry."
       (goto-char pos)
       (org-back-to-heading t)
       (org-show-context)
-      (let ((result (eca-org-agenda--current-entry-detail-plist)))
+      (let ((result (oab--current-entry-detail-plist)))
         (when indirect
           (org-tree-to-indirect-buffer))
         result))))
 
-(defun eca-org-agenda--with-entry-at (file pos fn)
+(defun oab--with-entry-at (file pos fn)
   "Visit FILE, go to POS heading, call FN, then save buffer."
-  (let ((path (eca-org-agenda--resolve-file file)))
+  (let ((path (oab--resolve-file file)))
     (unless (file-exists-p path)
-      (error "eca-org-agenda: file does not exist: %s" path))
+      (error "oab: file does not exist: %s" path))
     (with-current-buffer (find-file-noselect path)
       (unless (derived-mode-p 'org-mode) (org-mode))
       (save-restriction
@@ -1118,164 +1118,164 @@ Returns a plist describing the entry."
         (prog1 (funcall fn)
           (save-buffer))))))
 
-(defun eca-org-agenda-set-todo-at (file pos new-state)
+(defun oab-set-todo-at (file pos new-state)
   "Set TODO state at FILE/POS to NEW-STATE, then save."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let ((state (eca-org-agenda--require-non-empty-string new-state "new-state")))
+     (let ((state (oab--require-non-empty-string new-state "new-state")))
        (org-todo state)
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-set-todo-id (id new-state)
+(defun oab-set-todo-id (id new-state)
   "Set Org entry ID to NEW-STATE, then save."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let ((state (eca-org-agenda--require-non-empty-string new-state "new-state")))
+     (let ((state (oab--require-non-empty-string new-state "new-state")))
        (org-todo state)
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-schedule-at (file pos &optional when)
+(defun oab-schedule-at (file pos &optional when)
   "Set or clear SCHEDULED for FILE/POS.
 When WHEN is nil or empty, clear the schedule. Otherwise pass WHEN through to
 `org-schedule' after normalizing inactive timestamps."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let ((time (eca-org-agenda--normalize-planning-input when)))
+     (let ((time (oab--normalize-planning-input when)))
        (if time
            (org-schedule nil time)
          (org-schedule '(4)))
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-schedule-id (id &optional when)
+(defun oab-schedule-id (id &optional when)
   "Set or clear SCHEDULED for entry ID.
 When WHEN is nil or empty, clear the schedule. Otherwise pass WHEN through to
 `org-schedule' after normalizing inactive timestamps."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let ((time (eca-org-agenda--normalize-planning-input when)))
+     (let ((time (oab--normalize-planning-input when)))
        (if time
            (org-schedule nil time)
          (org-schedule '(4)))
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-deadline-at (file pos &optional when)
+(defun oab-deadline-at (file pos &optional when)
   "Set or clear DEADLINE for FILE/POS.
 When WHEN is nil or empty, clear the deadline. Otherwise pass WHEN through to
 `org-deadline' after normalizing inactive timestamps."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let ((time (eca-org-agenda--normalize-planning-input when)))
+     (let ((time (oab--normalize-planning-input when)))
        (if time
            (org-deadline nil time)
          (org-deadline '(4)))
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-deadline-id (id &optional when)
+(defun oab-deadline-id (id &optional when)
   "Set or clear DEADLINE for entry ID.
 When WHEN is nil or empty, clear the deadline. Otherwise pass WHEN through to
 `org-deadline' after normalizing inactive timestamps."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let ((time (eca-org-agenda--normalize-planning-input when)))
+     (let ((time (oab--normalize-planning-input when)))
        (if time
            (org-deadline nil time)
          (org-deadline '(4)))
-       (eca-org-agenda--current-entry-detail-plist)))))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-set-tags-at (file pos tags)
+(defun oab-set-tags-at (file pos tags)
   "Replace local TAGS for FILE/POS.
 TAGS may be nil, a string, or a list of strings. Nil or empty clears tags."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (org-set-tags (eca-org-agenda--normalize-tags-list tags))
-     (eca-org-agenda--current-entry-detail-plist))))
+     (org-set-tags (oab--normalize-tags-list tags))
+     (oab--current-entry-detail-plist))))
 
-(defun eca-org-agenda-set-tags-id (id tags)
+(defun oab-set-tags-id (id tags)
   "Replace local TAGS for entry ID.
 TAGS may be nil, a string, or a list of strings. Nil or empty clears tags."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (org-set-tags (eca-org-agenda--normalize-tags-list tags))
-     (eca-org-agenda--current-entry-detail-plist))))
+     (org-set-tags (oab--normalize-tags-list tags))
+     (oab--current-entry-detail-plist))))
 
-(defun eca-org-agenda-add-tags-at (file pos tags)
+(defun oab-add-tags-at (file pos tags)
   "Add local TAGS to FILE/POS, preserving existing order when possible."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let* ((extra (eca-org-agenda--require-tags-list tags "tags"))
-            (current (eca-org-agenda--plain-strings (org-get-tags nil t))))
-       (org-set-tags (eca-org-agenda--tags-union current extra))
-       (eca-org-agenda--current-entry-detail-plist)))))
+     (let* ((extra (oab--require-tags-list tags "tags"))
+            (current (oab--plain-strings (org-get-tags nil t))))
+       (org-set-tags (oab--tags-union current extra))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-add-tags-id (id tags)
+(defun oab-add-tags-id (id tags)
   "Add local TAGS to entry ID, preserving existing order when possible."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let* ((extra (eca-org-agenda--require-tags-list tags "tags"))
-            (current (eca-org-agenda--plain-strings (org-get-tags nil t))))
-       (org-set-tags (eca-org-agenda--tags-union current extra))
-       (eca-org-agenda--current-entry-detail-plist)))))
+     (let* ((extra (oab--require-tags-list tags "tags"))
+            (current (oab--plain-strings (org-get-tags nil t))))
+       (org-set-tags (oab--tags-union current extra))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-remove-tags-at (file pos tags)
+(defun oab-remove-tags-at (file pos tags)
   "Remove local TAGS from FILE/POS."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let* ((remove (eca-org-agenda--require-tags-list tags "tags"))
-            (current (eca-org-agenda--plain-strings (org-get-tags nil t))))
-       (org-set-tags (eca-org-agenda--tags-difference current remove))
-       (eca-org-agenda--current-entry-detail-plist)))))
+     (let* ((remove (oab--require-tags-list tags "tags"))
+            (current (oab--plain-strings (org-get-tags nil t))))
+       (org-set-tags (oab--tags-difference current remove))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-remove-tags-id (id tags)
+(defun oab-remove-tags-id (id tags)
   "Remove local TAGS from entry ID."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let* ((remove (eca-org-agenda--require-tags-list tags "tags"))
-            (current (eca-org-agenda--plain-strings (org-get-tags nil t))))
-       (org-set-tags (eca-org-agenda--tags-difference current remove))
-       (eca-org-agenda--current-entry-detail-plist)))))
+     (let* ((remove (oab--require-tags-list tags "tags"))
+            (current (oab--plain-strings (org-get-tags nil t))))
+       (org-set-tags (oab--tags-difference current remove))
+       (oab--current-entry-detail-plist)))))
 
-(defun eca-org-agenda-archive-at (file pos)
+(defun oab-archive-at (file pos)
   "Archive the subtree at FILE/POS using `org-archive-subtree', then save."
-  (eca-org-agenda--with-entry-at
+  (oab--with-entry-at
    file pos
    (lambda ()
-     (let ((title (eca-org-agenda--plain-string (org-get-heading t t t t)))
-           (todo (eca-org-agenda--plain-string (org-get-todo-state)))
-           (id (or (eca-org-agenda--plain-string (org-entry-get nil "ID"))
-                   (when eca-org-agenda-add-id (org-id-get-create)))))
+     (let ((title (oab--plain-string (org-get-heading t t t t)))
+           (todo (oab--plain-string (org-get-todo-state)))
+           (id (or (oab--plain-string (org-entry-get nil "ID"))
+                   (when oab-add-id (org-id-get-create)))))
        (let ((org-archive-subtree-save-file-p t))
          (org-archive-subtree))
        (list :archived t :id id :todo todo :title title :file (buffer-file-name))))))
 
-(defun eca-org-agenda-archive-id (id)
+(defun oab-archive-id (id)
   "Archive the subtree identified by ID using `org-archive-subtree', then save."
-  (eca-org-agenda--with-entry-id
+  (oab--with-entry-id
    id
    (lambda ()
-     (let ((title (eca-org-agenda--plain-string (org-get-heading t t t t)))
-           (todo (eca-org-agenda--plain-string (org-get-todo-state)))
-           (entry-id (or (eca-org-agenda--plain-string (org-entry-get nil "ID"))
-                         (when eca-org-agenda-add-id (org-id-get-create)))))
+     (let ((title (oab--plain-string (org-get-heading t t t t)))
+           (todo (oab--plain-string (org-get-todo-state)))
+           (entry-id (or (oab--plain-string (org-entry-get nil "ID"))
+                         (when oab-add-id (org-id-get-create)))))
        (let ((org-archive-subtree-save-file-p t))
          (org-archive-subtree))
        (list :archived t :id entry-id :todo todo :title title :file (buffer-file-name))))))
 
-(defun eca-org-agenda-refile-id-to-file (id target-file)
+(defun oab-refile-id-to-file (id target-file)
   "Move subtree ID to TARGET-FILE as a top-level entry.
 Returns a detailed plist for the moved entry at its new location."
-  (let ((marker (eca-org-agenda--find-id-marker id)))
+  (let ((marker (oab--find-id-marker id)))
     (unwind-protect
         (with-current-buffer (marker-buffer marker)
           (unless (derived-mode-p 'org-mode) (org-mode))
@@ -1288,20 +1288,20 @@ Returns a detailed plist for the moved entry at its new location."
                    (source-end (save-excursion
                                  (org-end-of-subtree t t)
                                  (point)))
-                   (tree (eca-org-agenda--current-subtree-text))
-                   (target-path (eca-org-agenda--resolve-file target-file)))
+                   (tree (oab--current-subtree-text))
+                   (target-path (oab--resolve-file target-file)))
               (delete-region source-start source-end)
               (save-buffer)
-              (let ((result (eca-org-agenda--insert-subtree-at-end-of-file target-path tree)))
+              (let ((result (oab--insert-subtree-at-end-of-file target-path tree)))
                 (org-id-update-id-locations (delete-dups (list source-file target-path)) t)
                 (append result (list :refiled t :source-file source-file))))))
       (set-marker marker nil))))
 
-(defun eca-org-agenda-refile-id-to-id (id target-id)
+(defun oab-refile-id-to-id (id target-id)
   "Move subtree ID to become the last child of TARGET-ID.
 Returns a detailed plist for the moved entry at its new location."
-  (let ((source-marker (eca-org-agenda--find-id-marker id))
-        (target-marker (eca-org-agenda--find-id-marker target-id)))
+  (let ((source-marker (oab--find-id-marker id))
+        (target-marker (oab--find-id-marker target-id)))
     (unwind-protect
         (with-current-buffer (marker-buffer source-marker)
           (unless (derived-mode-p 'org-mode) (org-mode))
@@ -1314,22 +1314,22 @@ Returns a detailed plist for the moved entry at its new location."
                    (source-end (save-excursion
                                  (org-end-of-subtree t t)
                                  (point)))
-                   (tree (eca-org-agenda--current-subtree-text))
+                   (tree (oab--current-subtree-text))
                    (target-file (buffer-file-name (marker-buffer target-marker)))
                    (target-pos (marker-position target-marker)))
-              (when (equal (eca-org-agenda--plain-string (org-entry-get nil "ID"))
-                           (eca-org-agenda--require-non-empty-string target-id "target-id"))
-                (user-error "eca-org-agenda: cannot refile an entry under itself"))
+              (when (equal (oab--plain-string (org-entry-get nil "ID"))
+                           (oab--require-non-empty-string target-id "target-id"))
+                (user-error "oab: cannot refile an entry under itself"))
               (when (and (eq (marker-buffer source-marker) (marker-buffer target-marker))
                          (>= target-pos source-start)
                          (< target-pos source-end))
-                (user-error "eca-org-agenda: cannot refile an entry into its own subtree"))
+                (user-error "oab: cannot refile an entry into its own subtree"))
               (delete-region source-start source-end)
               (save-buffer)
-              (let ((result (eca-org-agenda--insert-subtree-under-marker target-marker tree)))
+              (let ((result (oab--insert-subtree-under-marker target-marker tree)))
                 (org-id-update-id-locations (delete-dups (list source-file target-file)) t)
                 (append result (list :refiled t :source-file source-file :target-id target-id))))))
       (set-marker source-marker nil)
       (set-marker target-marker nil))))
-(provide 'eca-org-agenda-bridge)
-;;; eca-org-agenda-bridge.el ends here
+(provide 'oab)
+;;; oab.el ends here

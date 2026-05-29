@@ -2,7 +2,7 @@
 
 # org-agenda skill
 
-An ECA skill and supporting Elisp bridge for working with a running Org agenda inside Emacs.
+A skill and supporting Elisp bridge for working with a running Org agenda inside Emacs.
 
 ## What it provides
 
@@ -17,15 +17,15 @@ An ECA skill and supporting Elisp bridge for working with a running Org agenda i
 ## Repository layout
 
 - `SKILL.md` — skill definition and usage guidance
-- `scripts/eca-org-agenda-bridge.el` — Org bridge functions used by the skill
-- `test/eca-org-agenda-bridge-test.el` — ERT regression suite
+- `scripts/oab.el` — Org bridge functions used by the skill
+- `test/oab-test.el` — ERT regression suite
 - `test/fixtures/` — golden Org fixtures for formatting-sensitive tests
 
 ## Current scope
 
 The bridge currently supports only task capture:
 
-- `eca-org-agenda-capture-task`
+- `oab-capture-task`
 
 If `org-agenda-files` is unset or empty, the bridge falls back to `todo.org` under `org-directory`.
 
@@ -36,8 +36,8 @@ In an environment with an Emacs server running:
 ```bash
 emacsclient --eval '
 (progn
-  (load-file "/path/to/org-agenda-skill/test/eca-org-agenda-bridge-test.el")
-  (ert-run-tests-batch "^eca-org-agenda-bridge-test-"))'
+  (load-file "/path/to/org-agenda-skill/test/oab-test.el")
+  (ert-run-tests-batch "^oab-test-"))'
 ```
 
 The test selector is intentionally scoped so only this repository's bridge tests run.
